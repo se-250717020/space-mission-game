@@ -1,5 +1,5 @@
 """
-data.py  —  SAHİBİ: 4. Kişi
+data.py  —  SAHİBİ: 1. Kişi (NASA Araştırmacısı ve Veri Sorumlusu)
 ================================================================
 Oyundaki TÜM sabit veriler burada durur: görevler, yörüngeler, roketler,
 enerji sistemleri, radyasyon kalkanları, bilimsel cihazlar, antenler,
@@ -73,6 +73,8 @@ MISSIONS = {
         "required_instrument_types": ["radar", "spectrometer"],
         "min_science_points": 60,
         "comms_range_required": 2,
+        "orbit_options": ["high_venus_orbit", "low_venus_orbit"],
+        "min_lifetime_years": 2,
         "inspired_by": "NASA VERITAS & Magellan Mission",
         "fun_fact": "Venus receives nearly twice as much sunlight as Earth, boosting solar "
                     "panel output, but its dense atmosphere hides the surface from standard cameras.",
@@ -107,6 +109,8 @@ MISSIONS = {
         "required_instrument_types": ["camera", "magnetometer", "spectrometer"],
         "min_science_points": 80,
         "comms_range_required": 3,
+        "orbit_options": ["high_psyche_orbit", "low_psyche_orbit"],
+        "min_lifetime_years": 2,
         "inspired_by": "NASA Psyche Discovery Mission",
         "fun_fact": "16 Psyche orbits in the main asteroid belt between Mars and Jupiter, where "
                     "sunlight is only 14% as intense as at Earth.",
@@ -141,6 +145,8 @@ MISSIONS = {
         "required_instrument_types": ["camera", "spectrometer", "seismometer"],
         "min_science_points": 85,
         "comms_range_required": 3,
+        "orbit_options": ["saturn_titan_flyby_orbit", "titan_orbit"],
+        "min_lifetime_years": 2,
         "inspired_by": "NASA Dragonfly & Cassini-Huygens",
         "fun_fact": "At Saturn's distance, sunlight is 90 times weaker than on Earth, making "
                     "nuclear RTG generators essential for steady spacecraft power.",
@@ -176,6 +182,24 @@ ORBITS = {
         "downlink_factor": 0.5,
         "base_lifetime_years": 1,
     },
+    "high_venus_orbit": {
+        "name": "High Venus Orbit",
+        "description": "A long, looping orbit like ESA's Venus Express: easy to reach and long-lived, "
+                       "but the radar sees the surface from far away.",
+        "capacity_multiplier": 1.0,
+        "science_multiplier": 0.85,
+        "downlink_factor": 0.6,
+        "base_lifetime_years": 4,
+    },
+    "low_venus_orbit": {
+        "name": "Low Venus Orbit",
+        "description": "A circular orbit about 250 km up, like Magellan and VERITAS: sharp radar maps, "
+                       "but braking into it costs fuel and Venus blocks Earth for part of every orbit.",
+        "capacity_multiplier": 0.85,
+        "science_multiplier": 1.25,
+        "downlink_factor": 0.45,
+        "base_lifetime_years": 1,
+    },
     "high_mars_orbit": {
         "name": "High Mars Orbit",
         "description": "A safe, long-lived orbit with long contact windows, but far from the "
@@ -203,6 +227,24 @@ ORBITS = {
         "downlink_factor": 0.15,
         "base_lifetime_years": 3,
     },
+    "high_psyche_orbit": {
+        "name": "High Psyche Orbit",
+        "description": "About 700 km above the asteroid, like the Psyche mission's first orbit: "
+                       "safe and stable, but each picture covers a lot of ground in less detail.",
+        "capacity_multiplier": 1.0,
+        "science_multiplier": 0.85,
+        "downlink_factor": 0.25,
+        "base_lifetime_years": 3,
+    },
+    "low_psyche_orbit": {
+        "name": "Low Psyche Orbit",
+        "description": "Only about 75 km up for close-up maps of the metal surface, but the lumpy "
+                       "gravity of a small asteroid makes this orbit hard to keep for long.",
+        "capacity_multiplier": 0.95,
+        "science_multiplier": 1.3,
+        "downlink_factor": 0.2,
+        "base_lifetime_years": 1,
+    },
     "europa_orbit": {
         "name": "Europa Orbit",
         "description": "Circle Europa itself for the best science, but you sit inside Jupiter's "
@@ -210,6 +252,24 @@ ORBITS = {
         "capacity_multiplier": 0.8,
         "science_multiplier": 1.4,
         "downlink_factor": 0.15,
+        "base_lifetime_years": 1,
+    },
+    "saturn_titan_flyby_orbit": {
+        "name": "Saturn Orbit with Titan Flybys",
+        "description": "Like Cassini: orbit Saturn and use Titan's gravity on dozens of close "
+                       "flybys. Long-lived, but each flyby gives only a short look.",
+        "capacity_multiplier": 1.0,
+        "science_multiplier": 0.95,
+        "downlink_factor": 0.12,
+        "base_lifetime_years": 4,
+    },
+    "titan_orbit": {
+        "name": "Titan Orbit",
+        "description": "Circle Titan itself for continuous coverage of its lakes and dunes, but "
+                       "braking at Saturn's distance needs lots of fuel and the thick haze drags on the orbit.",
+        "capacity_multiplier": 0.8,
+        "science_multiplier": 1.35,
+        "downlink_factor": 0.1,
         "base_lifetime_years": 1,
     },
 }
@@ -392,6 +452,7 @@ INSTRUMENTS = {
         "mass_kg": 45,
         "cost_musd": 75,
         "science_points": 38,
+        "data_gb_per_day": 1.5,
     },
     "ground_radar": {
         "name": "Ground-Penetrating Radar",
@@ -464,6 +525,7 @@ COMMS_SYSTEMS = {
         "power_draw_w": 38,
         "mass_kg": 22,
         "cost_musd": 25,
+        "downlink_gb_per_day": 15.0,
     },
     "high_gain_antenna": {
         "name": "High-Gain Antenna",
