@@ -1,0 +1,11 @@
+# Render Blueprint: ücretsiz tek web servisi (Dockerfile'ı kullanır).
+# main dalına her push'ta Render siteyi kendisi yeniden kurar.
+services:
+  - type: web
+    name: space-mission-game
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true

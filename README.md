@@ -26,6 +26,7 @@ ayrıntılar "📚 Why? (Learn more)" kutularında.
 | `assets/flight.html` | Gerçekçi fırlatma animasyonu (sesli geri sayım, ateşleme sesi, duman, kademe ayrılması) + uzay aracı uçurma mini oyunu (saf JavaScript Canvas, sesler Web Audio ile üretilir) |
 | `backend/main.py`, `backend/requirements.txt` | React sürümü için FastAPI sunucusu: `data.py` + `calculations.py` + `artwork.py`'yi HTTP ile sunar (hesap yapmaz) |
 | `frontend/` | React + Vite + Tailwind + Framer Motion arayüzü: ana menü, 3 kolonlu oyun ekranı, Framer Motion fırlatma animasyonu (sarsıntı, kalkış, kademe ayrılması, gezegenler arası yol), canvas mini oyun, rapor |
+| `Dockerfile`, `.dockerignore`, `render.yaml` | İnternete yayınlama (Render, ücretsiz): React'i derler, FastAPI ile tek adresten sunar (bölüm 5) |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (React sürümünde `backend/main.py` → `frontend/`). Ortak dil
@@ -200,14 +201,26 @@ Arkadaşlar kendi bilgisayarlarından dosya düzenleyip push **etmez**; oyunu ke
 sadece denemek için `git pull` yapabilirler. Commit ve push'u Tech Lead yapar
 (ayrıntılar [TEAM_RULES.md](TEAM_RULES.md)).
 
-## 5. İnternete yayınlama (Streamlit Community Cloud, Tech Lead)
+## 5. İnternete yayınlama (Render, ücretsiz, Tech Lead)
 
-1. https://share.streamlit.io → GitHub ile giriş yap.
-2. **Create app → Deploy a public app from GitHub** seç. ("Get started from a template" **değil**.)
-3. Repository: `se-250717020/space-mission-game` · Branch: `main` · Main file path: `app.py` ·
-   App URL (isteğe bağlı): `space-mission-game` → **Deploy**.
-4. Çıkan `.streamlit.app` linkini bu README'nin en üstüne yaz.
+React + FastAPI sürümü **tek bir sunucu** olarak yayınlanır: `Dockerfile` önce React'i derler
+(`frontend/dist`), sonra FastAPI hem oyunu (`/`) hem de `/api/...` uç noktalarını aynı adresten verir.
+Ayarlar `render.yaml` dosyasında (ücretsiz plan, Frankfurt).
+
+1. https://render.com → **GitHub ile giriş yap** (repo sahibi hesap: `se-250717020`).
+2. **New → Blueprint** → `se-250717020/space-mission-game` reposunu seç → **Apply**.
+   Render `render.yaml`'ı okur ve `space-mission-game` adlı ücretsiz web servisini kurar (ilk kurulum ~5 dk).
+3. Çıkan `https://….onrender.com` linkini bu README'nin en üstüne yaz.
    Bundan sonra `main`'e yapılan her push birkaç dakika içinde siteye otomatik yansır.
+
+Ücretsiz planın sınırları:
+- 15 dakika kimse girmezse sunucu uyur; sonraki ilk açılış ~1 dakika sürer (sonra hızlıdır).
+- Sunucunun diski kalıcı değildir: uyuyunca ya da yeniden kurulunca skor tabloları (`leaderboard.json`,
+  `flight_scores.json`) sıfırlanır. Kalıcı skor için ileride ücretsiz bir veritabanı bağlanabilir.
+
+Yerelde aynısını denemek: `cd frontend; npm run build`, sonra repo kökünden
+`.venv\Scripts\python.exe -m uvicorn backend.main:app --port 8010` → http://localhost:8010
+(bitince `frontend/dist`'i sil; varken 8000'deki backend de oyunu `/` adresinden verir).
 
 ## 6. Kurulum geçmişi (Tech Lead, yapıldı ✅)
 

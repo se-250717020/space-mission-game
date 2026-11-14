@@ -16,6 +16,9 @@ Uç noktalar (endpoint):
     GET  /api/leaderboard   → skor tablosu
     POST /api/flight-score  → uçuş mini oyunu puanını kaydet; sıralama + ilk 5 pilot
     GET  /api/flight-leaderboard → pilot (uçuş) skor tablosu
+
+Yayın (deploy): frontend/dist varsa (npm run build) oyunun kendisi de "/" adresinden
+buradan verilir → tek adres, tek sunucu (Dockerfile + render.yaml, README'deki "Yayınlama").
 """
 
 import json
@@ -26,6 +29,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # data.py, calculations.py ve artwork.py repo kökünde; oradan içe aktar
@@ -272,3 +276,10 @@ def flight_score(req: FlightScoreRequest):
 @app.get("/api/flight-leaderboard")
 def flight_leaderboard(mission: Optional[str] = None, limit: int = 10):
     return calc.rank_flight_scores(_load_json_list(FLIGHT_FILE), mission, max(1, min(limit, 50)))
+
+
+# React'in derlenmiş hali (frontend/dist) varsa aynı sunucudan verilir. EN SONDA durmalı:
+# /api/... yolları yukarıda tanımlı olduğu için önce onlar eşleşir, gerisi bu klasörden gelir.
+DIST_DIR = ROOT / "frontend" / "dist"
+if DIST_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="site")
