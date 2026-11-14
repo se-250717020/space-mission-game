@@ -10,6 +10,9 @@ sunucu yeniden başlarsa odalar silinir.
 KURALLAR:
   * Saf Python: `import streamlit` YOK, hesap YOK (hesaplar calculations.py'de).
   * Dışarıya her zaman odanın KOPYASI verilir; değişiklik sadece metodlarla yapılır.
+  * Bir oyuncunun ekranı her birkaç saniyede `heartbeat` gönderir. OFFLINE_SECONDS boyunca
+    sesi çıkmayan oyuncu "çevrimdışı" sayılır: rolleri başkası alabilir, hazır sayımına girmez,
+    oda doluysa yeni gelen oyuncuya yer açmak için odadan çıkarılır.
 
 ODA sözlüğü (get_room döndürür):
 {
@@ -20,7 +23,8 @@ ODA sözlüğü (get_room döndürür):
     "players": {"Ayse": {"roles": ["mission_lead"], "ready": False, "last_seen": float}},
     "chat": [{"player": str, "text": str, "time": float}, ...],
     "log": [str, ...],                 # "Ayse changed rocket to falcon_heavy"
-    "launch": None | {"result": LAUNCH sözlüğü, "selection": selection, "by": str},
+    "launch": None | {"result": LAUNCH sözlüğü, "selection": selection, "by": str,
+                      "saved_by": None | str},   # skor tablosuna kim kaydetti (bir kez)
     "version": int,                    # her değişiklikte artar
     "created": float, "updated": float,
 }
@@ -39,6 +43,7 @@ MAX_PLAYERS = 4
 ROOM_TTL_SECONDS = 12 * 3600
 MAX_CHAT_MESSAGES = 50
 MAX_LOG_LINES = 30
+OFFLINE_SECONDS = 30
 # Kod karıştırılmasın diye benzer harfler yok (0/O, 1/I)
 CODE_ALPHABET = "".join(ch for ch in string.ascii_uppercase + string.digits if ch not in "0O1I")
 
@@ -107,14 +112,28 @@ class RoomStore:
             raise ValueError("Please enter your name.")
         with self._lock:
             room = self._room(code)
-            if name not in room["players"]:
-                if len(room["players"]) >= MAX_PLAYERS:
-                    raise ValueError(f"This room already has {MAX_PLAYERS} players.")
-                room["players"][name] = {"roles": [], "ready": False, "last_seen": time.time()}
-                self._log(room, f"{name} joined the room.")
+            existing = room["players"].get(name)
+            if existing is not None:
+                # Aynı isim: sayfayı yenileyen oyuncu geri dönebilir, ama o isim hâlâ bağlıysa olmaz
+                if is_online(existing):
+                    raise ValueError(f"'{name}' is already playing in this room. Pick another name "
+                                     f"(if this is you after a page refresh, wait {OFFLINE_SECONDS} "
+                                     "seconds and join again).")
+                existing["last_seen"] = time.time()
+                self._log(room, f"{name} reconnected.")
                 self._touch(room)
-            else:
-                room["players"][name]["last_seen"] = time.time()
+                return room["code"], name
+            if len(room["players"]) >= MAX_PLAYERS:
+                offline = sorted((info["last_seen"], p) for p, info in room["players"].items()
+                                 if not is_online(info))
+                if not offline:
+                    raise ValueError(f"This room already has {MAX_PLAYERS} players.")
+                gone = offline[0][1]
+                del room["players"][gone]
+                self._log(room, f"{gone} was offline and left the room.")
+            room["players"][name] = {"roles": [], "ready": False, "last_seen": time.time()}
+            self._log(room, f"{name} joined the room.")
+            self._touch(room)
             return room["code"], name
 
     def leave(self, code, player_name):
@@ -141,9 +160,12 @@ class RoomStore:
             for other, info in room["players"].items():
                 if other != player_name:
                     taken = set(info["roles"]) & set(roles)
-                    if taken:
+                    if taken and is_online(info):
                         raise ValueError(f"{other} already has the role: "
                                          + ", ".join(TEAM_ROLES[r]["name"] for r in taken))
+                    if taken:  # çevrimdışı oyuncunun rolü devralınır
+                        info["roles"] = [r for r in info["roles"] if r not in taken]
+                        self._log(room, f"{player_name} took over from offline {other}.")
             room["players"][player_name]["roles"] = roles
             for info in room["players"].values():
                 info["ready"] = False
@@ -202,11 +224,28 @@ class RoomStore:
             self._touch(room)
 
     def set_launch(self, code, player_name, selection, result):
+        """Fırlatma sonucunu kaydeder. Zaten fırlatıldıysa (çift tıklama) False döner."""
         with self._lock:
             room = self._room(code)
-            room["launch"] = {"selection": dict(selection), "result": result, "by": player_name}
+            if room["launch"] is not None:
+                return False
+            room["launch"] = {"selection": dict(selection), "result": result, "by": player_name,
+                              "saved_by": None}
             self._log(room, f"{player_name} gave the GO for launch!")
             self._touch(room)
+            return True
+
+    def mark_leaderboard_saved(self, code, player_name):
+        """Takım sonucu skor tablosuna sadece bir kez yazılsın: ilk çağıran True alır."""
+        with self._lock:
+            room = self._room(code)
+            launch = room["launch"]
+            if launch is None or launch.get("saved_by"):
+                return False
+            launch["saved_by"] = player_name
+            self._log(room, f"{player_name} saved the team score to the leaderboard.")
+            self._touch(room)
+            return True
 
     def add_chat(self, code, player_name, text):
         text = (text or "").strip()[:300]
@@ -219,13 +258,25 @@ class RoomStore:
             self._touch(room)
 
 
+def is_online(player_info, now=None):
+    """Oyuncu son OFFLINE_SECONDS içinde heartbeat gönderdi mi?"""
+    return (now or time.time()) - player_info["last_seen"] <= OFFLINE_SECONDS
+
+
+def online_players(room, now=None):
+    return {p: info for p, info in room["players"].items() if is_online(info, now)}
+
+
 def all_roles_claimed(room):
-    claimed = {r for info in room["players"].values() for r in info["roles"]}
+    """Her rol bağlı (çevrimiçi) bir oyuncuda mı?"""
+    claimed = {r for info in online_players(room).values() for r in info["roles"]}
     return claimed >= set(TEAM_ROLES)
 
 
 def everyone_ready(room):
-    return bool(room["players"]) and all(info["ready"] for info in room["players"].values())
+    """Bağlı oyuncuların hepsi hazır mı? (çevrimdışı oyuncular beklenmez)"""
+    online = online_players(room)
+    return bool(online) and all(info["ready"] for info in online.values())
 
 
 def roles_of(room, player_name):
@@ -269,4 +320,21 @@ if __name__ == "__main__":
     store.set_ready(code, "Mehmet", True)
     assert everyone_ready(store.get_room(code))
     store.add_chat(code, "Mehmet", "Can we afford a bigger antenna?")
+    try:
+        store.join(code, "Mehmet")
+        raise AssertionError("an online name must not be taken twice")
+    except ValueError:
+        pass
+    assert store.set_launch(code, "Ayse", room["design"], {"success": True})
+    assert not store.set_launch(code, "Ayse", room["design"], {"success": True}), "double GO"
+    assert store.mark_leaderboard_saved(code, "Mehmet")
+    assert not store.mark_leaderboard_saved(code, "Ayse"), "team score saved twice"
+    # Mehmet sekmeyi kapattı: rolleri devralınabilir, hazır sayımı onu beklemez, yeri boşalır
+    store._rooms[code]["players"]["Mehmet"]["last_seen"] -= OFFLINE_SECONDS + 1
+    store.set_roles(code, "Ayse", list(TEAM_ROLES))
+    room = store.get_room(code)
+    assert room["players"]["Mehmet"]["roles"] == [] and all_roles_claimed(room)
+    for extra in ["Zeynep", "Can", "Ece"]:
+        store.join(code, extra)
+    assert "Mehmet" not in store.get_room(code)["players"], "offline player makes room"
     print(f"✅ team_room self-test passed (room {code}, version {store.get_room(code)['version']})")

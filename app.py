@@ -435,8 +435,11 @@ def mission_report_markdown(selection, launch_result, team=None):
     return "\n".join(lines)
 
 
-def draw_report_card(selection, launch_result, team_mode=False, leaderboard_name=""):
-    """Fırlatmadan sonra mühendislik karnesini gösterir."""
+def draw_report_card(selection, launch_result, team_mode=False, leaderboard_name="",
+                     saved_by=None, on_save=None):
+    """Fırlatmadan sonra mühendislik karnesini gösterir.
+    saved_by: bu fırlatma skor tablosuna zaten kaydedildiyse kaydedenin adı (form gizlenir).
+    on_save(entry) -> bool: kaydı yapar; False dönerse başkası daha önce kaydetmiştir."""
     if launch_result is None:
         return
     evaluation = calc.evaluate_mission(selection)
@@ -500,7 +503,12 @@ def draw_report_card(selection, launch_result, team_mode=False, leaderboard_name
         selection, launch_result, team if team_mode else None),
         file_name="mission_report.md", mime="text/markdown")
 
-    if data.DIFFICULTIES[selection["difficulty"]]["leaderboard"]:
+    if not data.DIFFICULTIES[selection["difficulty"]]["leaderboard"]:
+        st.caption("Sandbox games are not ranked on the leaderboard.")
+    elif saved_by:
+        st.success(f"🏆 This launch is on the leaderboard (saved by {saved_by}). "
+                   "Change the design and launch again to try for a better score.")
+    else:
         with st.form(f"leaderboard_{'team' if team_mode else 'single'}"):
             name = st.text_input("Name for the leaderboard", value=leaderboard_name, max_chars=30)
             if st.form_submit_button("🏆 Save to leaderboard"):
@@ -509,8 +517,12 @@ def draw_report_card(selection, launch_result, team_mode=False, leaderboard_name
                     entry["score"] = team["team_score"]
                     entry["grade"] = team["team_grade"]
                     entry["team"] = True
-                save_leaderboard_entry(entry)
-                st.success("Saved! Open the Leaderboard tab to see your rank.")
+                if on_save is None or on_save(entry):
+                    if on_save is None:
+                        save_leaderboard_entry(entry)
+                    st.success("Saved! Open the Leaderboard tab to see your rank.")
+                else:
+                    st.info("This launch is already on the leaderboard.")
 
 
 # ================================================================
@@ -574,7 +586,19 @@ def draw_single_player():
     draw_gauges(design)
     st.divider()
     launch_result = draw_launch(design)
-    draw_report_card(design, launch_result)
+    launch = st.session_state.get("launch") or {}
+    saved_ids = st.session_state.setdefault("_saved_launches", set())
+
+    def save_once(entry):
+        # Aynı fırlatma tek kişilik modda da sadece bir kez kaydedilir
+        if launch.get("id") in saved_ids:
+            return False
+        save_leaderboard_entry(entry)
+        saved_ids.add(launch.get("id"))
+        return True
+
+    draw_report_card(design, launch_result,
+                     saved_by="you" if launch.get("id") in saved_ids else None, on_save=save_once)
 
 
 # ================================================================
@@ -586,7 +610,8 @@ def draw_team_lobby():
     st.write("Each player opens this website on their own device. One player creates a room and "
              "shares the 4-letter code; the others join. Everyone takes at least one role and can only "
              "change their own part of the spacecraft, so you must **talk and negotiate**. "
-             "Playing on one device? Join once and take all four roles.")
+             "Playing on one device? Join once and take all four roles. "
+             "Closed the page by mistake? Join again with the **same name** to get your roles back.")
     for role in data.TEAM_ROLES.values():
         st.write(f"{role['emoji']} **{role['name']}** — {role['description']} *Personal goal: {role['goal']}*")
     create, join = st.columns(2)
@@ -646,21 +671,25 @@ def draw_team_room():
         del st.session_state["team"]
         st.rerun()
 
-    # Rol seçimi (sayfa düzeyinde, yenilenmez)
-    taken_by_others = {r for p, info in room["players"].items() if p != team["name"] for r in info["roles"]}
-    mine = team_room.roles_of(room, team["name"])
+    draw_team_live(team["code"], team["name"])
+
+
+def draw_role_picker(code, me, room):
+    """Rol seçimi. Çevrimdışı oyuncuların rolleri de seçilebilir (devralınır)."""
+    store = get_room_store()
+    online = team_room.online_players(room)
+    taken_by_others = {r for p, info in online.items() if p != me for r in info["roles"]}
+    mine = team_room.roles_of(room, me)
     with st.form("roles"):
         roles = st.multiselect("Your roles", [r for r in data.TEAM_ROLES if r not in taken_by_others],
                                default=mine,
                                format_func=lambda r: f"{data.TEAM_ROLES[r]['emoji']} {data.TEAM_ROLES[r]['name']}")
         if st.form_submit_button("Save my roles"):
             try:
-                store.set_roles(team["code"], team["name"], roles)
+                store.set_roles(code, me, roles)
                 st.rerun()
             except ValueError as error:
                 st.error(str(error))
-
-    draw_team_live(team["code"], team["name"])
 
 
 @st.fragment(run_every=TEAM_REFRESH_SECONDS)
@@ -682,9 +711,17 @@ def draw_team_live(code, me):
     cols = st.columns(len(data.TEAM_ROLES))
     for col, (role_id, role) in zip(cols, data.TEAM_ROLES.items()):
         owner = next((p for p, info in room["players"].items() if role_id in info["roles"]), None)
-        ready = owner and room["players"][owner]["ready"]
-        col.markdown(f"{role['emoji']} **{role['name']}**  \n"
-                     + (f"{owner} {'✅ ready' if ready else '⏳ designing'}" if owner else "*nobody yet*"))
+        if owner is None:
+            status = "*nobody yet*"
+        elif not team_room.is_online(room["players"][owner]):
+            status = f"{owner} 📴 offline — anyone can take this role"
+        else:
+            status = f"{owner} {'✅ ready' if room['players'][owner]['ready'] else '⏳ designing'}"
+        col.markdown(f"{role['emoji']} **{role['name']}**  \n{status}")
+    without_role = [p for p, info in team_room.online_players(room).items() if not info["roles"]]
+    if without_role:
+        st.caption("In the room without a role: " + ", ".join(without_role))
+    draw_role_picker(code, me, room)
 
     draw_twist(design)
     my_roles = team_room.roles_of(room, me)
@@ -737,16 +774,19 @@ def draw_team_live(code, me):
         if st.button("🚀 GO FOR LAUNCH!", type="primary", width="stretch",
                      disabled=not (all_claimed and all_ready)):
             result = calc.simulate_launch(design)
-            animate_launch(result)
-            store.set_launch(code, me, design, result)
-            launch = {"selection": design, "result": result, "by": me}
+            if store.set_launch(code, me, design, result):
+                animate_launch(result)
+            launch = store.get_room(code)["launch"]
     elif launch is None:
         st.caption("The Flight Director gives the final GO.")
     if launch:
-        st.caption(f"Launched by {launch['by']}.")
+        st.caption(f"Launched by {launch['by']}. Any design change clears this result so the team "
+                   "can try again.")
         draw_stages(launch["result"])
         draw_report_card(launch["selection"], launch["result"], team_mode=True,
-                         leaderboard_name=f"Team {room['code']}")
+                         leaderboard_name=f"Team {room['code']}", saved_by=launch.get("saved_by"),
+                         on_save=lambda entry: store.mark_leaderboard_saved(code, me)
+                         and (save_leaderboard_entry(entry) or True))
 
 
 def draw_team_mode():

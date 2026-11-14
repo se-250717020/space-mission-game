@@ -204,9 +204,17 @@ Kural özeti:
 `RoomStore` metodları: `create_room(design, difficulty, twist=None) -> code`, `get_room(code)`,
 `join(code, player_name) -> (code, name)`, `leave`, `heartbeat`, `set_roles(code, player, roles)`,
 `role_owner`, `update_design(code, player, key, value, normalize=None)` (sadece rolün `controls`
-anahtarları), `set_ready`, `set_twist`, `set_launch(code, player, selection, result)`, `add_chat`.
-Yardımcılar: `all_roles_claimed(room)`, `everyone_ready(room)`, `roles_of(room, player)`,
-`controls_of(room, player)`. Oda sözlüğünün şeması dosyanın en üstünde.
+anahtarları), `set_ready`, `set_twist`, `set_launch(code, player, selection, result) -> bool`
+(zaten fırlatıldıysa False), `mark_leaderboard_saved(code, player) -> bool` (takım skoru bir kez),
+`add_chat`.
+Yardımcılar: `is_online(player_info)`, `online_players(room)`, `all_roles_claimed(room)`,
+`everyone_ready(room)`, `roles_of(room, player)`, `controls_of(room, player)`. Oda sözlüğünün
+şeması dosyanın en üstünde.
+
+Bağlantı kuralları: `OFFLINE_SECONDS` (30) boyunca heartbeat göndermeyen oyuncu çevrimdışıdır.
+Çevrimdışı oyuncunun rolleri başkası tarafından alınabilir, hazır sayımına ve rol sayımına girmez,
+oda doluysa yeni gelen oyuncuya yer açmak için çıkarılır. Bağlı bir oyuncunun ismiyle ikinci kişi
+giremez; çevrimdışı oyuncu aynı isimle girerse rollerine geri döner.
 
 ## 7. Sözleşme: `app.py`
 
@@ -215,7 +223,8 @@ Yardımcılar: `all_roles_claimed(room)`, `everyone_ready(room)`, `roles_of(room
 - Tasarım ekranı (tek kişi ve takım aynı): `design_widget(kind, label, key, options, design,
   editable, apply_change, prefix, format_func=str, **kwargs)`, `draw_mission_step(...)`,
   `draw_part_picker(design, editable, apply_change, prefix)`, `draw_gauges(selection)`,
-  `draw_launch(selection)`, `draw_report_card(selection, launch_result, team_mode=False, leaderboard_name="")`.
+  `draw_launch(selection)`, `draw_report_card(selection, launch_result, team_mode=False, leaderboard_name="",
+  saved_by=None, on_save=None)` (aynı fırlatma skor tablosuna bir kez yazılır), `draw_role_picker(code, me, room)`.
 - Modlar: `draw_single_player()`, `draw_team_mode()` (`draw_team_lobby`, `draw_team_room`,
   `draw_team_live` → `st.fragment(run_every=3)`), sekmeler `draw_learn_tab`, `draw_leaderboard_tab`,
   `draw_share_tab`, `main()`.
