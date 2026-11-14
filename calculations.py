@@ -115,6 +115,23 @@ POINTS_PER_CHECK = 9        # 8 kontrol x 9 = 72
 SCIENCE_MAX_POINTS = 18     # bilim puanı 100'e ulaşınca tam puan
 BUDGET_SAVINGS_POINTS = 10  # bütçenin tamamı artarsa 10 puan
 
+# Oyun tasarımı hasar seviyeleri. Bunlar NASA ölçümü değil, oyuncuya
+# etkisinin büyüklüğünü anlatan yüzdelerdir.
+DAMAGE_SEVERITIES = (10, 25, 50)
+
+NASA_EVENT_WARNINGS = {
+    "solar_storm": (
+        "NASA WARNING: Energetic solar particles can damage spacecraft "
+        "electronics and degrade optical imaging systems. Radiation shielding "
+        "helps reduce this risk."
+    ),
+    "micrometeoroid": (
+        "NASA WARNING: Micrometeoroids travel at extremely high speeds. Even "
+        "tiny particles can damage exposed spacecraft hardware. Protective "
+        "design helps reduce impact damage."
+    ),
+}
+
 
 # ----------------------------------------------------------------
 # Yardımcılar (iç kullanım)
@@ -164,6 +181,49 @@ def _is_protected(selection, event):
     if event["protection"] == "backup_comms":
         return _comms(selection)["has_backup"]
     return False
+
+
+def _event_damage_target(selection, event_id, rng):
+    """Olayın zarar verebileceği, oyuncunun seçtiği parçayı döndürür."""
+    if event_id == "solar_storm":
+        camera_ids = [
+            instrument_id
+            for instrument_id in selection["instruments"]
+            if _find(INSTRUMENTS, instrument_id, "INSTRUMENTS")["type"] == "camera"
+        ]
+        if not camera_ids:
+            return None
+        camera_id = rng.choice(camera_ids)
+        return {
+            "id": camera_id,
+            "name": _find(INSTRUMENTS, camera_id, "INSTRUMENTS")["name"],
+            "label": "camera instrument",
+        }
+
+    if event_id == "micrometeoroid":
+        comms = _comms(selection)
+        return {
+            "id": selection["comms"],
+            "name": comms["name"],
+            "label": "communications antenna",
+        }
+
+    return None
+
+
+def _event_message(event, target, severity, survived):
+    """Mevcut EVENT sözlüğündeki `message` alanı için açıklama üretir."""
+    target_text = f"{target['label']} '{target['name']}'"
+    outcome = (
+        "Protection kept the spacecraft operational."
+        if survived
+        else "The spacecraft cannot continue the mission."
+    )
+    warning = NASA_EVENT_WARNINGS.get(event["id"], "")
+    return (
+        f"{event['name']} caused {severity}% damage to the selected {target_text}. "
+        f"{outcome} {warning}"
+    ).strip()
 
 
 # ----------------------------------------------------------------
@@ -478,19 +538,32 @@ def role_report(selection):
 
 def roll_space_events(selection, seed=None):
     """Yolculukta hangi rastgele olayların yaşandığını belirler.
-    Her olay kendi `probability` ihtimaliyle tetiklenir."""
+    Her olay kendi `probability` ihtimaliyle tetiklenir; görev başına
+    en fazla bir olay döndürülür."""
     rng = seed if isinstance(seed, random.Random) else random.Random(seed)
-    events = []
+    candidates = []
     for eid, event in SPACE_EVENTS.items():
-        if rng.random() < event["probability"]:
-            survived = _is_protected(selection, event)
-            events.append({
-                "id": eid,
-                "name": event["name"],
-                "survived": survived,
-                "message": event["survive_message"] if survived else event["fail_message"],
-            })
-    return events
+        target = _event_damage_target(selection, eid, rng)
+        if target is not None and rng.random() < event["probability"]:
+            candidates.append((eid, event, target))
+
+    if not candidates:
+        return []
+
+    event_id, event, target = rng.choice(candidates)
+    severity = rng.choice(DAMAGE_SEVERITIES)
+    survived = _is_protected(selection, event)
+    return [{
+        "id": event_id,
+        "name": event["name"],
+        "survived": survived,
+        "message": _event_message(
+            {"id": event_id, "name": event["name"]},
+            target,
+            severity,
+            survived,
+        ),
+    }]
 
 
 def simulate_launch(selection, seed=None):
