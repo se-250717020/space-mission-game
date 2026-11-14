@@ -1,0 +1,16 @@
+# Sanal ortam (herkes kendi bilgisayarında kurar, GitHub'a gitmez)
+.venv/
+venv/
+
+# Python önbellek dosyaları
+__pycache__/
+*.pyc
+
+# Editör / işletim sistemi dosyaları
+.vscode/
+.claude/
+.DS_Store
+Thumbs.db
+
+# Streamlit gizli ayarları (asla paylaşılmaz)
+.streamlit/secrets.toml
