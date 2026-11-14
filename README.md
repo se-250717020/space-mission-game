@@ -1,26 +1,26 @@
 # 🚀 Space Mission Design Game (Uzay Görevi Tasarım Oyunu) — NASA Space Apps Challenge 2026
 
-Bir görev seç (Ay, Mars, Europa); roket, enerji sistemi, radyasyon kalkanı, anten ve bilimsel
-cihazları seçerek uzay aracını tasarla. Bütçeyi, taşıma kapasitesini ve güç dengesini aşmadan
-fırlat, yolda güneş fırtınası ve mikro meteor gibi rastgele olaylara karşı dayan, sonunda
-mühendislik karneni al.
+Bir görev (Ay, Mars, Europa) ve yörünge seç; roket, enerji sistemi, radyasyon kalkanı, anten ve
+bilimsel cihazları seçerek uzay aracını tasarla. Bütçeyi, taşıma kapasitesini, güç ve veri dengesini
+aşmadan fırlat, yolda güneş fırtınası ve mikro meteor gibi rastgele olaylara karşı dayan, sonunda
+nedenleriyle açıklanan mühendislik karneni al.
 
 - **GitHub:** https://github.com/se-250717020/space-mission-game
 - **Canlı oyun (Streamlit):** _deploy bitince linki buraya yaz_
-- **Ekip kuralları, hazır yapay zeka komutları ve 48 saatlik plan:** **[TEAM_RULES.md](TEAM_RULES.md)**
+- **Ekip kuralları, Gemini ile çalışma ve 48 saatlik plan:** **[TEAM_RULES.md](TEAM_RULES.md)**
+- **Yapay zekaya verilecek sözleşme (tüm isimler):** **[AI_CONTEXT.md](AI_CONTEXT.md)**
 
 ## Dosyalar ve sahipleri
 
 | Dosya | Sahibi | İçeriği |
 |---|---|---|
-| `data.py` | 4. Kişi | Görev, roket, enerji, kalkan, anten, cihaz ve uzay olayı sözlükleri (sadece veri) |
-| `calculations.py` | 1. Kişi | Saf Python hesap fonksiyonları ve fırlatma simülasyonu (Streamlit yok) |
-| `app.py` — BÖLÜM A | 2. Kişi | Görev/parça seçimi, ilerleme çubukları, risk uyarıları |
-| `app.py` — BÖLÜM B | 3. Kişi | Fırlatma animasyonu, mühendislik karnesi |
-| `requirements.txt`, `app.py` ORTAK/ANA AKIŞ | Tech Lead | Kütüphaneler, ana akış |
+| `data.py` | 1. Kişi — NASA Araştırmacısı ve Veri | Görev, yörünge, roket, enerji, kalkan, anten, cihaz, uzay olayı, ders ve takım rolü sözlükleri (sadece veri) |
+| `calculations.py` | 2. Kişi — Oyun Kuralları | Saf Python hesap fonksiyonları ve fırlatma simülasyonu (Streamlit yok) |
+| `app.py`, `assets/` | 3. Kişi — Görsel ve Arayüz | Seçim ekranı, göstergeler, fırlatma animasyonu, karne, takım modu |
+| `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `requirements.txt` | 4. Kişi — Teknik Lider | Sözleşme, dokümanlar, birleştirme, yayın, sunum |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil `selection` sözlüğüdür
-(şeması `calculations.py` dosyasının en üstünde).
+(şeması `AI_CONTEXT.md` ve `calculations.py` dosyasının en üstünde).
 
 ## Oyunun kuralları (kısaca)
 
@@ -31,7 +31,12 @@ Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil `sel
 | Power Balance | Üretilen güç ≥ tüketilen güç (güneş paneli uzaklaştıkça zayıflar) |
 | Radiation Hardening | Kalkan seviyesi ≥ görevin radyasyon seviyesi |
 | Communications | Anten menzili ≥ görevin istediği menzil |
-| Science Instruments | Gerekli cihaz türlerinin hepsi var ve bilim puanı ≥ görev hedefi |
+| Data Downlink | Cihazların günlük verisi ≤ antenin o yörüngeden gönderebildiği veri |
+| Mission Lifetime | Yörüngenin ömrü + fazla kalkan bonusu ≥ görevin istediği yıl |
+| Science Instruments | Gerekli cihaz türlerinin hepsi var ve bilim puanı (× yörünge çarpanı) ≥ görev hedefi |
+
+Yörünge seçimi bir dengedir: hedefe yakın yörünge daha çok bilim puanı verir ama daha çok yakıt
+ister (roket kapasitesi düşer), Dünya ile iletişimi zorlaşır ve ömrü kısadır.
 
 Rastgele olaylar (her fırlatmada ayrı ayrı %15 ihtimal):
 - **Solar Storm:** kalkan seviyesi görevin istediğinden *yüksekse* zarar vermez.

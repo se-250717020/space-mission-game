@@ -1,9 +1,10 @@
 """
-calculations.py  —  SAHİBİ: 1. Kişi
+calculations.py  —  SAHİBİ: 2. Kişi (Oyun Kuralları Sorumlusu)
 ================================================================
 Oyunun "beyni". Seçilen parçalara bakıp maliyet, kütle, güç dengesi,
-radyasyon, iletişim ve bilim kontrollerini yapar; görev sonucunu döndürür.
-Fırlatma simülasyonunda rastgele uzay olaylarını da (SPACE_EVENTS) işler.
+radyasyon, iletişim, veri, görev ömrü ve bilim kontrollerini yapar;
+görev sonucunu döndürür. Fırlatma simülasyonunda rastgele uzay
+olaylarını da (SPACE_EVENTS) işler. Sözleşmenin tamamı: AI_CONTEXT.md
 
 KURALLAR:
   * Burada SADECE saf Python fonksiyonları vardır. `import streamlit` YOK,
@@ -22,6 +23,7 @@ Kontrol: terminalde `python calculations.py` → örnek bir görevi test eder.
 ----------------------------------------------------------------
 selection = {
     "mission":     "mars_orbiter",           # MISSIONS içindeki bir ID
+    "orbit":       "low_mars_orbit",         # ORBITS ID'si, görevin orbit_options listesinden
     "rocket":      "falcon_9",               # ROCKETS içindeki bir ID
     "power":       "large_solar_panel",      # POWER_SYSTEMS içindeki bir ID
     "power_units": 1,                        # 1 ... MAX_POWER_UNITS
@@ -31,17 +33,22 @@ selection = {
 }
 
 HERKESE AÇIK FONKSİYONLAR (app.py bunları kullanır):
-    new_selection(...)                -> selection sözlüğü
+    new_selection(mission, rocket, power, power_units, shield, instruments,
+                  comms="low_gain_antenna", orbit=None)
+                                      -> selection sözlüğü (orbit=None → görevin ilk yörüngesi)
     total_cost(selection)             -> float  (milyon USD, roket dahil)
     total_mass(selection)             -> float  (kg, uzay aracının kütlesi)
-    payload_capacity(selection)       -> float  (kg, roketin bu hedefe taşıyabildiği)
+    payload_capacity(selection)       -> float  (kg, roketin bu hedefe/yörüngeye taşıyabildiği)
     power_balance(selection)          -> {"produced_w", "consumed_w", "margin_w"}
     radiation_status(selection)       -> {"required_level", "provided_level"}
     comms_status(selection)           -> {"required_range", "provided_range", "has_backup"}
+    data_balance(selection)           -> {"generated_gb", "downlink_gb", "margin_gb"}  (günlük)
+    mission_lifetime(selection)       -> {"lifetime_years", "required_years", "shield_bonus_years"}
     missing_instrument_types(selection) -> list[str]
-    total_science_points(selection)   -> int
+    total_science_points(selection)   -> int  (yörüngenin science_multiplier'ı dahil)
     event_risks(selection)            -> list[str]  (korunmasız olunan SPACE_EVENTS ID'leri)
     evaluate_mission(selection)       -> RESULT sözlüğü (aşağıda)
+    role_report(selection)            -> ROLE listesi (aşağıda, takım modu için)
     letter_grade(score)               -> "A+" / "A" / "B" / "C" / "D" / "F"
     roll_space_events(selection, seed=None) -> EVENT listesi (aşağıda)
     simulate_launch(selection, seed=None)   -> LAUNCH sözlüğü (aşağıda)
@@ -51,16 +58,25 @@ RESULT sözlüğü:
     "success":  bool,               # tüm kontroller geçti mi
     "score":    int,                # 0 - 100
     "grade":    str,
-    "checks": [                     # her zaman bu 6 id, bu sırada
-        {"id": "budget" | "mass" | "power" | "radiation" | "comms" | "science",
-         "name": str, "passed": bool, "message": str},
+    "checks": [                     # her zaman data.CHECK_IDS içindeki 8 id, bu sırada:
+        {"id": "budget" | "mass" | "power" | "radiation" | "comms" | "data"
+               | "lifetime" | "science",
+         "name": str, "passed": bool,
+         "message": str,            # sayılarla durum ("Used 490 of 650 million $.")
+         "tip": str,                # başarısızsa ne yapmalı (geçtiyse "")
+         "lesson": str},            # data.CHECK_LESSONS'tan genel bilgi
         ...
     ],
     "summary": {"cost", "budget", "budget_efficiency", "mass", "capacity",
                 "power_produced", "power_consumed", "radiation_required",
                 "radiation_provided", "comms_required", "comms_provided",
-                "science_points", "science_target"},
+                "data_generated", "data_downlink", "lifetime_years",
+                "lifetime_required", "orbit", "science_points", "science_target"},
 }
+
+ROLE sözlüğü (role_report listesinin her elemanı, data.TEAM_ROLES sırasıyla):
+    {"role": str (TEAM_ROLES ID), "name": str, "emoji": str, "passed": bool,
+     "failed_checks": [check sözlüğü, ...]}
 
 EVENT sözlüğü (yaşanan her olay için bir tane):
     {"id": str, "name": str, "survived": bool, "message": str}
@@ -76,20 +92,26 @@ LAUNCH sözlüğü:
 import random
 
 from data import (
+    CHECK_LESSONS,
+    COMMS_RANGE_LABELS,
     COMMS_SYSTEMS,
     INSTRUMENT_TYPE_LABELS,
     INSTRUMENTS,
+    LIFETIME_YEARS_PER_EXTRA_SHIELD_LEVEL,
     MAX_POWER_UNITS,
+    MAX_SHIELD_LIFETIME_BONUS_YEARS,
     MISSIONS,
+    ORBITS,
     POWER_SYSTEMS,
     RADIATION_SHIELDS,
     ROCKETS,
     SPACE_EVENTS,
     SPACECRAFT_BUS,
+    TEAM_ROLES,
 )
 
 # Puanlama ağırlıkları (toplam 100)
-POINTS_PER_CHECK = 12       # 6 kontrol x 12 = 72
+POINTS_PER_CHECK = 9        # 8 kontrol x 9 = 72
 SCIENCE_MAX_POINTS = 18     # bilim puanı 100'e ulaşınca tam puan
 BUDGET_SAVINGS_POINTS = 10  # bütçenin tamamı artarsa 10 puan
 
@@ -107,6 +129,11 @@ def _find(table, item_id, table_name):
 
 def _mission(selection):
     return _find(MISSIONS, selection["mission"], "MISSIONS")
+
+
+def _orbit(selection):
+    orbit_id = selection.get("orbit") or _mission(selection)["orbit_options"][0]
+    return _find(ORBITS, orbit_id, "ORBITS")
 
 
 def _rocket(selection):
@@ -143,11 +170,16 @@ def _is_protected(selection, event):
 # HERKESE AÇIK FONKSİYONLAR
 # ----------------------------------------------------------------
 def new_selection(mission, rocket, power, power_units, shield, instruments,
-                  comms="low_gain_antenna"):
-    """Standart selection sözlüğünü oluşturur."""
+                  comms="low_gain_antenna", orbit=None):
+    """Standart selection sözlüğünü oluşturur.
+    orbit verilmezse (veya bu göreve ait değilse) görevin ilk yörüngesi kullanılır."""
     units = max(1, min(int(power_units), MAX_POWER_UNITS))
+    options = _find(MISSIONS, mission, "MISSIONS")["orbit_options"]
+    if orbit not in options:
+        orbit = options[0]
     return {
         "mission": mission,
+        "orbit": orbit,
         "rocket": rocket,
         "power": power,
         "power_units": units,
@@ -179,8 +211,10 @@ def total_mass(selection):
 
 
 def payload_capacity(selection):
-    """Seçilen roketin bu göreve taşıyabileceği en fazla kütle (kg)."""
-    return float(_rocket(selection)["leo_capacity_kg"] * _mission(selection)["capacity_factor"])
+    """Seçilen roketin bu göreve ve yörüngeye taşıyabileceği en fazla kütle (kg)."""
+    return float(_rocket(selection)["leo_capacity_kg"]
+                 * _mission(selection)["capacity_factor"]
+                 * _orbit(selection)["capacity_multiplier"])
 
 
 def power_balance(selection):
@@ -220,6 +254,31 @@ def comms_status(selection):
     }
 
 
+def data_balance(selection):
+    """Cihazların günde ürettiği veri ve antenin bu yörüngeden günde gönderebildiği veri (GB)."""
+    generated = sum(i["data_gb_per_day"] for i in _instruments(selection))
+    downlink = _comms(selection)["downlink_gb_per_day"] * _orbit(selection)["downlink_factor"]
+    return {
+        "generated_gb": round(float(generated), 2),
+        "downlink_gb": round(float(downlink), 2),
+        "margin_gb": round(float(downlink - generated), 2),
+    }
+
+
+def mission_lifetime(selection):
+    """Aracın hedefte kaç yıl çalışacağı. Yörüngenin temel ömrüne, görevin istediğinden
+    fazla olan her kalkan seviyesi için bonus yıl eklenir."""
+    rad = radiation_status(selection)
+    extra_levels = max(0, rad["provided_level"] - rad["required_level"])
+    bonus = min(extra_levels * LIFETIME_YEARS_PER_EXTRA_SHIELD_LEVEL,
+                MAX_SHIELD_LIFETIME_BONUS_YEARS)
+    return {
+        "lifetime_years": float(_orbit(selection)["base_lifetime_years"] + bonus),
+        "required_years": float(_mission(selection)["min_lifetime_years"]),
+        "shield_bonus_years": float(bonus),
+    }
+
+
 def missing_instrument_types(selection):
     """Görevin istediği ama seçilmemiş cihaz türleri (ör. ["radar"])."""
     selected_types = {i["type"] for i in _instruments(selection)}
@@ -227,8 +286,9 @@ def missing_instrument_types(selection):
 
 
 def total_science_points(selection):
-    """Seçilen cihazların toplam bilim puanı."""
-    return int(sum(i["science_points"] for i in _instruments(selection)))
+    """Seçilen cihazların toplam bilim puanı × yörüngenin science_multiplier değeri."""
+    raw = sum(i["science_points"] for i in _instruments(selection))
+    return int(round(raw * _orbit(selection)["science_multiplier"]))
 
 
 def event_risks(selection):
@@ -262,6 +322,9 @@ def evaluate_mission(selection):
     power = power_balance(selection)
     rad = radiation_status(selection)
     comms = comms_status(selection)
+    data_flow = data_balance(selection)
+    life = mission_lifetime(selection)
+    orbit = _orbit(selection)
     missing = missing_instrument_types(selection)
     science = total_science_points(selection)
     science_target = mission["min_science_points"]
@@ -269,12 +332,24 @@ def evaluate_mission(selection):
     if missing:
         science_message = ("Missing instrument types: "
                            + ", ".join(INSTRUMENT_TYPE_LABELS.get(t, t) for t in missing))
+        science_tip = ("This mission needs at least one instrument of each required type: "
+                       + ", ".join(INSTRUMENT_TYPE_LABELS.get(t, t) for t in missing) + ".")
     elif science < science_target:
         science_message = (f"Science points {science} are below the mission target of "
                            f"{science_target}.")
+        science_tip = ("Add more instruments, or choose an orbit closer to the target "
+                       "for sharper data (higher science multiplier).")
     else:
         science_message = (f"All required instruments on board. Science points {science} "
-                           f"(target {science_target}).")
+                            f"(target {science_target}).")
+        science_tip = ""
+
+    if _power(selection)["type"] == "solar" and mission["solar_efficiency"] < 0.5:
+        power_tip = (f"Sunlight at {mission['target']} is only "
+                     f"{mission['solar_efficiency'] * 100:.0f}% as strong as near Earth. "
+                     f"Add more panels or switch to an RTG.")
+    else:
+        power_tip = "Add power units, choose a stronger power system, or drop power-hungry instruments."
 
     checks = [
         {
@@ -282,38 +357,72 @@ def evaluate_mission(selection):
             "name": "Budget",
             "passed": cost <= budget,
             "message": f"Used {cost:.0f} of {budget:.0f} million $.",
+            "tip": (f"You are {cost - budget:.0f} million $ over. Try a cheaper rocket, "
+                    f"fewer power units or fewer instruments."),
         },
         {
             "id": "mass",
             "name": "Payload Capacity",
             "passed": mass <= capacity,
-            "message": f"Spacecraft is {mass:.0f} kg; the rocket can carry at most {capacity:.0f} kg to this target.",
+            "message": (f"Spacecraft is {mass:.0f} kg; the rocket can carry at most "
+                        f"{capacity:.0f} kg to this target and orbit."),
+            "tip": (f"You are {mass - capacity:.0f} kg too heavy. Pick a bigger rocket, an orbit "
+                    f"that needs less braking fuel, or remove heavy parts."),
         },
         {
             "id": "power",
             "name": "Power Balance",
             "passed": power["margin_w"] >= 0,
             "message": f"Produced {power['produced_w']:.0f} W, consumed {power['consumed_w']:.0f} W.",
+            "tip": power_tip,
         },
         {
             "id": "radiation",
             "name": "Radiation Hardening",
             "passed": rad["provided_level"] >= rad["required_level"],
             "message": f"Required level {rad['required_level']}, shield level {rad['provided_level']}.",
+            "tip": f"Choose a shield with protection level {rad['required_level']} or higher.",
         },
         {
             "id": "comms",
             "name": "Communications",
             "passed": comms["provided_range"] >= comms["required_range"],
             "message": f"Required range {comms['required_range']}, antenna range {comms['provided_range']}.",
+            "tip": (f"From {mission['target']} you need an antenna that reaches "
+                    f"{COMMS_RANGE_LABELS[comms['required_range']]}."),
+        },
+        {
+            "id": "data",
+            "name": "Data Downlink",
+            "passed": data_flow["margin_gb"] >= 0,
+            "message": (f"Instruments create {data_flow['generated_gb']:g} GB/day; the antenna can "
+                        f"send {data_flow['downlink_gb']:g} GB/day from {orbit['name']}."),
+            "tip": ("Pick an antenna with a bigger downlink, an orbit with better Earth contact, "
+                    "or fewer data-heavy instruments."),
+        },
+        {
+            "id": "lifetime",
+            "name": "Mission Lifetime",
+            "passed": life["lifetime_years"] >= life["required_years"],
+            "message": (f"Expected lifetime {life['lifetime_years']:g} years "
+                        f"(needed: {life['required_years']:g})."),
+            "tip": (f"Choose a longer-lived orbit, or a shield stronger than level "
+                    f"{rad['required_level']}: each extra level adds "
+                    f"{LIFETIME_YEARS_PER_EXTRA_SHIELD_LEVEL} year (max "
+                    f"+{MAX_SHIELD_LIFETIME_BONUS_YEARS})."),
         },
         {
             "id": "science",
             "name": "Science Instruments",
             "passed": not missing and science >= science_target,
             "message": science_message,
+            "tip": science_tip,
         },
     ]
+    for check in checks:
+        if check["passed"]:
+            check["tip"] = ""
+        check["lesson"] = CHECK_LESSONS.get(check["id"], "")
 
     budget_efficiency = (budget - cost) / budget * 100 if (budget > 0 and cost <= budget) else 0.0
 
@@ -340,10 +449,31 @@ def evaluate_mission(selection):
             "radiation_provided": rad["provided_level"],
             "comms_required": comms["required_range"],
             "comms_provided": comms["provided_range"],
+            "data_generated": data_flow["generated_gb"],
+            "data_downlink": data_flow["downlink_gb"],
+            "lifetime_years": life["lifetime_years"],
+            "lifetime_required": life["required_years"],
+            "orbit": selection.get("orbit") or mission["orbit_options"][0],
             "science_points": science,
             "science_target": science_target,
         },
     }
+
+
+def role_report(selection):
+    """Takım modu için: her rolün sorumlu olduğu kontrollerden hangileri başarısız?"""
+    checks = {c["id"]: c for c in evaluate_mission(selection)["checks"]}
+    report = []
+    for role_id, role in TEAM_ROLES.items():
+        failed = [checks[cid] for cid in role["checks"] if cid in checks and not checks[cid]["passed"]]
+        report.append({
+            "role": role_id,
+            "name": role["name"],
+            "emoji": role["emoji"],
+            "passed": not failed,
+            "failed_checks": failed,
+        })
+    return report
 
 
 def roll_space_events(selection, seed=None):
@@ -423,9 +553,24 @@ def simulate_launch(selection, seed=None):
 
     # 7) Bilim
     if not add("Science Operations", check["science"]["passed"],
-               f"Sending data back to Earth! Science points: {result['summary']['science_points']}"
+               f"Instruments are collecting data! Science points: {result['summary']['science_points']}"
                if check["science"]["passed"]
                else "The science goals could not be met: " + check["science"]["message"]):
+        return finish(False)
+
+    # 8) Veri gönderimi
+    if not add("Data Downlink", check["data"]["passed"],
+               "All science data reached Earth." if check["data"]["passed"]
+               else "The antenna cannot keep up — most of the science data was lost. "
+                    + check["data"]["message"]):
+        return finish(False)
+
+    # 9) Görev ömrü
+    if not add("Extended Operations", check["lifetime"]["passed"],
+               f"The spacecraft kept working for {result['summary']['lifetime_years']:g} years. "
+               f"Mission complete!" if check["lifetime"]["passed"]
+               else "The spacecraft wore out before finishing its science. "
+                    + check["lifetime"]["message"]):
         return finish(False)
 
     return finish(True)
@@ -435,20 +580,31 @@ def simulate_launch(selection, seed=None):
 # Hızlı test:  python calculations.py
 # ----------------------------------------------------------------
 if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")  # Türkçe Windows konsolunda emoji hatasını önler
+    from data import CHECK_IDS
+
     example = new_selection(
         mission="mars_orbiter",
         rocket="falcon_9",
         power="large_solar_panel",
         power_units=1,
-        shield="aluminum_plating",
+        shield="titanium_vault",
         instruments=["hd_camera", "infrared_spectrometer", "ground_radar"],
-        comms="medium_gain_antenna",
+        comms="high_gain_antenna",
+        orbit="low_mars_orbit",
     )
     r = evaluate_mission(example)
+    assert [c["id"] for c in r["checks"]] == CHECK_IDS, "checks must follow data.CHECK_IDS"
+    assert r["success"], "the example design should pass every check"
     print(f"Score: {r['score']}  Grade: {r['grade']}  Success: {r['success']}")
     for c in r["checks"]:
         print(("  ✅ " if c["passed"] else "  ❌ ") + c["name"] + " — " + c["message"])
+        if c["tip"]:
+            print("       tip: " + c["tip"])
     print("Unprotected against:", event_risks(example) or "nothing")
+    print("Team:", ", ".join(f"{x['name']} {'OK' if x['passed'] else 'FAIL'}"
+                             for x in role_report(example)))
     launch = simulate_launch(example, seed=42)
     print("Launch:", "SUCCESS" if launch["success"] else "FAILURE")
     for s in launch["stages"]:

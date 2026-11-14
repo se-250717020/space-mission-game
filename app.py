@@ -1,18 +1,18 @@
 """
-app.py  —  SAHİPLERİ: 2. Kişi (BÖLÜM A) ve 3. Kişi (BÖLÜM B)
+app.py  —  SAHİBİ: 3. Kişi (Görsel ve Arayüz Sorumlusu)
 ================================================================
-Streamlit arayüzü. Çalıştırmak için:   streamlit run app.py
+Streamlit arayüzü. Çalıştırmak için:   python -m streamlit run app.py
 
 KURALLAR:
   * Bu dosya hesap YAPMAZ; tüm sayıları calculations.py'den ister,
-    tüm listeleri data.py'den okur.
-  * 2. Kişi SADECE "BÖLÜM A" içindeki fonksiyonları düzenler.
-  * 3. Kişi SADECE "BÖLÜM B" içindeki fonksiyonları düzenler.
-  * "ORTAK" ve "ANA AKIŞ" bölümlerine sadece Tech Lead dokunur.
-  * Fonksiyon isimleri ve parametreleri değişmez (main() onları çağırıyor).
-    Fonksiyonların İÇİNİ istediğiniz gibi güzelleştirebilirsiniz.
-  * Bölümler arası tek bağlantı `selection` sözlüğüdür (şeması
-    calculations.py'nin en üstünde yazıyor).
+    tüm listeleri data.py'den okur. (Sözleşme: AI_CONTEXT.md)
+  * Dosyanın tamamı 3. Kişi'nindir. Bölümler (ORTAK, BÖLÜM A, BÖLÜM B,
+    ANA AKIŞ) sadece düzen içindir.
+  * Mevcut fonksiyonların isimleri ve parametreleri değişmez; içlerini
+    istediğin gibi güzelleştirebilirsin, yeni fonksiyon ekleyebilirsin
+    (ör. 4 kişilik takım modu için draw_team_mode()).
+  * Parçalar arası tek bağlantı `selection` sözlüğüdür (şeması
+    calculations.py'nin en üstünde ve AI_CONTEXT.md'de yazıyor).
 """
 
 import time
@@ -26,7 +26,7 @@ st.set_page_config(page_title="Space Mission Design Game", page_icon="🚀", lay
 
 
 # ================================================================
-# ORTAK  —  (Tech Lead)
+# ORTAK  —  yardımcı fonksiyonlar
 # ================================================================
 def draw_header():
     st.title("🚀 Space Mission Design Game")
@@ -34,11 +34,12 @@ def draw_header():
                "and launch it without blowing the budget!")
 
 
-def ratio_bar(label, value, limit, unit):
+def ratio_bar(label, value, limit, unit, decimals=0):
     """value/limit oranında ilerleme çubuğu çizer. Limit aşılırsa kırmızı uyarı verir."""
-    ratio = (value / limit) if limit > 0 else 1.0
+    ratio = (value / limit) if limit > 0 else (0.0 if value <= 0 else 2.0)
     st.progress(min(max(ratio, 0.0), 1.0),
-                text=f"{label}: {value:,.0f} / {limit:,.0f} {unit} ({ratio * 100:.0f}%)")
+                text=f"{label}: {value:,.{decimals}f} / {limit:,.{decimals}f} {unit} "
+                     f"({ratio * 100:.0f}%)")
     if ratio > 1.0:
         st.error(f"{label} limit exceeded!")
 
@@ -49,7 +50,7 @@ def type_label(instrument_type):
 
 
 # ================================================================
-# BÖLÜM A  —  2. Kişi: Görev seçimi, parça seçimi, göstergeler
+# BÖLÜM A  —  Görev ve yörünge seçimi, parça seçimi, göstergeler
 # ================================================================
 def draw_mission_picker():
     """Kenar çubuğunda görev seçtirir. Seçilen görevin ID'sini döndürür."""
@@ -71,15 +72,29 @@ def draw_mission_picker():
             f"- **Required instruments:** "
             f"{', '.join(type_label(t) for t in m['required_instrument_types'])}\n"
             f"- **Science target:** {m['min_science_points']} points\n"
-            f"- **Comms range needed:** {data.COMMS_RANGE_LABELS[m['comms_range_required']]}"
+            f"- **Comms range needed:** {data.COMMS_RANGE_LABELS[m['comms_range_required']]}\n"
+            f"- **Must operate for:** {m['min_lifetime_years']} years"
         )
         st.info(f"🛰️ **Inspired by:** {m['inspired_by']}\n\n💡 {m['fun_fact']}")
     return mission_id
 
 
 def draw_part_picker(mission_id):
-    """Roket, enerji, kalkan ve cihaz seçtirir. `selection` sözlüğü döndürür."""
+    """Yörünge, roket, enerji, kalkan, anten ve cihaz seçtirir. `selection` sözlüğü döndürür."""
     st.subheader("🛠️ Design Your Spacecraft")
+
+    orbit_id = st.radio(
+        "Orbit",
+        options=data.MISSIONS[mission_id]["orbit_options"],
+        format_func=lambda oid: data.ORBITS[oid]["name"],
+        horizontal=True,
+        key=f"sel_orbit_{mission_id}",
+    )
+    o = data.ORBITS[orbit_id]
+    st.caption(f"{o['description']} · Rocket capacity ×{o['capacity_multiplier']} · "
+               f"Science ×{o['science_multiplier']} · Downlink ×{o['downlink_factor']} · "
+               f"Base lifetime {o['base_lifetime_years']} years")
+
     left, right = st.columns(2)
 
     with left:
@@ -126,6 +141,7 @@ def draw_part_picker(mission_id):
         cm = data.COMMS_SYSTEMS[comms_id]
         st.caption(f"Range: {data.COMMS_RANGE_LABELS[cm['range_level']]} · "
                    f"{'with backup' if cm['has_backup'] else 'no backup'} · "
+                   f"downlink {cm['downlink_gb_per_day']:g} GB/day · "
                    f"{cm['power_draw_w']} W · {cm['mass_kg']} kg · {cm['cost_musd']} M$")
 
         instrument_ids = st.multiselect(
@@ -138,10 +154,11 @@ def draw_part_picker(mission_id):
         for iid in instrument_ids:
             i = data.INSTRUMENTS[iid]
             st.caption(f"• {i['name']}: {i['power_draw_w']} W · {i['mass_kg']} kg · "
-                       f"{i['cost_musd']} M$ · science +{i['science_points']}")
+                       f"{i['cost_musd']} M$ · science +{i['science_points']} · "
+                       f"{i['data_gb_per_day']:g} GB/day")
 
     return calc.new_selection(mission_id, rocket_id, power_id, power_units, shield_id,
-                              instrument_ids, comms_id)
+                              instrument_ids, comms_id, orbit_id)
 
 
 def draw_gauges(selection):
@@ -164,6 +181,15 @@ def draw_gauges(selection):
     if comms_have < comms_needed:
         st.error("This antenna cannot reach Earth from this target!")
 
+    ratio_bar("📶 Data per day", summary["data_generated"], summary["data_downlink"], "GB",
+              decimals=1)
+
+    life, life_needed = summary["lifetime_years"], summary["lifetime_required"]
+    st.progress(min(life / life_needed, 1.0) if life_needed > 0 else 1.0,
+                text=f"⏳ Lifetime: {life:g} years (required: {life_needed:g})")
+    if life < life_needed:
+        st.error("The spacecraft will wear out before the mission is finished!")
+
     science, target = summary["science_points"], summary["science_target"]
     st.progress(min(science / target, 1.0) if target > 0 else 1.0,
                 text=f"🔬 Science: {science} / {target} points (target)")
@@ -183,7 +209,7 @@ def draw_gauges(selection):
 
 
 # ================================================================
-# BÖLÜM B  —  3. Kişi: Fırlatma simülasyonu ve mühendislik karnesi
+# BÖLÜM B  —  Fırlatma simülasyonu ve mühendislik karnesi
 # ================================================================
 def draw_launch(selection):
     """Fırlatma düğmesi + aşama aşama simülasyon.
@@ -238,6 +264,18 @@ def draw_report_card(selection, launch_result):
 
     for check in evaluation["checks"]:
         st.write(("✅ " if check["passed"] else "❌ ") + f"**{check['name']}:** {check['message']}")
+        if check["tip"]:
+            st.caption(f"💡 {check['tip']}")
+        with st.expander(f"Why does {check['name'].lower()} matter?"):
+            st.write(check["lesson"])
+
+    st.markdown("**👥 Team feedback**")
+    for role in calc.role_report(selection):
+        if role["passed"]:
+            st.write(f"{role['emoji']} **{role['name']}:** all responsibilities met.")
+        else:
+            st.write(f"{role['emoji']} **{role['name']}:** needs work on "
+                     + ", ".join(c["name"] for c in role["failed_checks"]))
 
     if evaluation["success"] and not launch_result["success"]:
         if any(not e["survived"] for e in launch_result["events"]):
@@ -248,7 +286,7 @@ def draw_report_card(selection, launch_result):
 
 
 # ================================================================
-# ANA AKIŞ  —  (Tech Lead)  Sıra: başlık → görev → parçalar → göstergeler → fırlatma → karne
+# ANA AKIŞ  —  Sıra: başlık → görev → parçalar → göstergeler → fırlatma → karne
 # ================================================================
 def main():
     draw_header()
