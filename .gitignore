@@ -8,9 +8,13 @@ __pycache__/
 
 # Editör / işletim sistemi dosyaları
 .vscode/
+.idea/
 .claude/
 .DS_Store
 Thumbs.db
 
 # Streamlit gizli ayarları (asla paylaşılmaz)
 .streamlit/secrets.toml
+
+# Oyun sunucusunun skor tablosu (her bilgisayarda ayrı, GitHub'a gitmez)
+leaderboard.json
