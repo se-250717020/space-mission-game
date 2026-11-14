@@ -208,10 +208,18 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
     }
   });
 
-  useTimeline(async (w) => {
+  useTimeline(async (w, token) => {
+    // Rakam, ses kelimeyi söylemeye BAŞLADIĞI anda gösterilir (en fazla 350 ms beklenir);
+    // önceki kelime hâlâ sürüyorsa kesilir ki ses ekranın gerisinde kalmasın. Tempo saniyede 1.
+    const speakNow = async (text) => {
+      await Promise.race([say(text, { interrupt: !!window.speechSynthesis?.speaking }), wait(350)]);
+      if (token.dead) throw new Error('cancelled');
+    };
     await w(450);
     for (let n = 5; n >= 1; n--) {
-      setCount(n); SFX.pip(); say(COUNT_WORDS[n]);
+      const t0 = performance.now();
+      await speakNow(COUNT_WORDS[n]);
+      setCount(n); SFX.pip();
       if (n === 4) mark('Budget Approval', rows.find((r) => r.name === 'Budget Approval')?.ok);
       if (n === 3) {
         const build = rows.find((r) => r.name === 'Build and Test');
@@ -231,16 +239,18 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
         addPuffs(Array.from({ length: 14 }, () => { const side = Math.random() < 0.5 ? -1 : 1; return { x: side * rnd(20, 90), y: rnd(-6, 6), dx: side * rnd(60, 240), dy: rnd(0, 30), s: rnd(1.6, 3), d: rnd(2.5, 4), c: 245, warm: false }; }));
       }
       if (n === 1) { SFX.sparks(); setSparkBursts((b) => [...b, Date.now()]); }
-      await w(1000);
+      await w(Math.max(0, 1000 - (performance.now() - t0)));
     }
     // Ateşleme: motor çalışır, roket kelepçede titrer, duman yayılır
+    const t1 = performance.now();
+    await speakNow('Ignition!');
     setCount(0);
     setSparkBursts((b) => [...b, Date.now()]);
-    engineStart(); SFX.ignite(); say('Ignition!');
+    engineStart(); SFX.ignite();
     engine.current.level = 0.55; shake.current.target = 3.5;
-    await w(1400);
+    await w(Math.max(0, 1400 - (performance.now() - t1)));
+    await speakNow('Liftoff!');
     setCount(null);
-    say('Liftoff!');
     banner('🚀 LIFTOFF!', 'We have liftoff!', '#ffb347');
     engine.current.level = 1; shake.current.target = 6;
     tStart.current = performance.now(); setFlying(true);

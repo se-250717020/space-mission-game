@@ -103,13 +103,17 @@ export function engineStop(fade = 0.5) {
 
 // Geri sayımı okuyan ses (tarayıcıda varsa). Net bir İngilizce ses seçilir; cümleler
 // birbirini KESMEZ, sıraya girer (önceden "five" yarıda kalıyordu).
+// Bilgisayarın KENDİ (yerel) sesi tercih edilir: internetten gelen sesler ("Google US English")
+// konuşmaya ~1 saniye geç başlıyordu, geri sayım sesi ekranın gerisinde kalıyordu.
 let voice = null;
 function pickVoice() {
   try {
     const all = window.speechSynthesis.getVoices();
     const en = all.filter((v) => /^en[-_]/i.test(v.lang));
-    const prefer = ['Google US English', 'Microsoft Aria', 'Microsoft Guy', 'Microsoft Jenny', 'Samantha', 'Alex', 'Microsoft David', 'Microsoft Zira'];
-    voice = prefer.map((p) => en.find((v) => v.name.includes(p))).find(Boolean)
+    const local = en.filter((v) => v.localService);
+    const prefer = ['Microsoft Aria', 'Microsoft Jenny', 'Microsoft Guy', 'Samantha', 'Alex', 'Microsoft David', 'Microsoft Zira', 'Daniel', 'Karen'];
+    voice = prefer.map((p) => local.find((v) => v.name.includes(p))).find(Boolean)
+      || local.find((v) => /en-US/i.test(v.lang)) || local[0]
       || en.find((v) => /en-US/i.test(v.lang)) || en[0] || null;
   } catch { voice = null; }
 }
@@ -118,20 +122,38 @@ if (typeof window !== 'undefined' && window.speechSynthesis) {
   window.speechSynthesis.addEventListener?.('voiceschanged', pickVoice);
 }
 
-// LAUNCH tıklamasında çağrılır: ses listesini hazırlar, eski konuşmayı temizler
+// LAUNCH tıklamasında çağrılır: ses listesini hazırlar, eski konuşmayı temizler ve ses motorunu
+// sessiz bir cümleyle "ısıtır" (ilk kelime gecikmesin diye)
 export function primeSpeech() {
-  try { window.speechSynthesis?.cancel(); pickVoice(); } catch { /* yok */ }
+  try {
+    const s = window.speechSynthesis;
+    if (!s) return;
+    s.cancel(); pickVoice();
+    if (muted) return;
+    const u = new SpeechSynthesisUtterance(' ');
+    if (voice) u.voice = voice;
+    u.lang = voice?.lang || 'en-US'; u.volume = 0;
+    s.speak(u);
+  } catch { /* yok */ }
 }
 
-export function say(text, { interrupt = false, rate = 0.95 } = {}) {
-  if (muted || !window.speechSynthesis) return;
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    if (voice) u.voice = voice;
-    u.lang = voice?.lang || 'en-US'; u.rate = rate; u.pitch = 0.9; u.volume = Math.max(0.4, volume);
-    if (interrupt) window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-  } catch { /* desteklenmiyor */ }
+// Konuşur ve ses GERÇEKTEN başladığında çözülen bir Promise döndürür
+// (geri sayım rakamı bununla sese senkron gösterilir). En geç maxWait ms sonra yine çözülür.
+export function say(text, { interrupt = false, rate = 0.95, maxWait = 600 } = {}) {
+  if (muted || !window.speechSynthesis) return Promise.resolve();
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      if (voice) u.voice = voice;
+      u.lang = voice?.lang || 'en-US'; u.rate = rate; u.pitch = 0.9; u.volume = Math.max(0.4, volume);
+      u.onstart = finish; u.onerror = finish;
+      if (interrupt) window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+      setTimeout(finish, maxWait);
+    } catch { finish(); }
+  });
 }
 export function sayStop() { try { window.speechSynthesis?.cancel(); } catch { /* yok */ } }
 
