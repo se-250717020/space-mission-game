@@ -30,7 +30,8 @@ Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geli�
 | `data.py` | Sadece veri sözlükleri + `validate_schema()` |
 | `calculations.py` | Saf hesap fonksiyonları, `import streamlit` YOK |
 | `app.py` | Streamlit ekranı, hesap YOK |
-| `assets/flight.html` | Fırlatma animasyonu + mini oyun (saf HTML5 Canvas / Vanilla JS, Web Audio sesleri). `app.py` içindeki `__CONFIG__` yerine JSON ayarları koyar |
+| `artwork.py` | Saf SVG çizimleri (sadece `data`'yı okur, hesap ve `streamlit` YOK): her rokete özgü görünüm (`rocket_image`), seçilen parçalara göre değişen uzay aracı (`spacecraft_image`), atölye sahnesi (`workshop_scene`) |
+| `assets/flight.html` | Gerçekçi fırlatma animasyonu + mini oyun (saf HTML5 Canvas / Vanilla JS, Web Audio sesleri, sesli geri sayım). `app.py` içindeki `__CONFIG__` yerine JSON ayarları koyar |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`.
@@ -228,19 +229,24 @@ Takım modu 2026-11-14'te kaldırıldı, oyun sadece tek kişilik. `team_room.py
     `▶ START MISSION` (`_start_game`, isim boşsa uyarı), Leaderboard, Space School, Options düğmeleri.
   - `game` → `draw_game_page`: `draw_topbar` + `st.columns` ile 3 kolon (`layout="wide"`).
     - Tasarım aşaması (`phase` = `"design"`): sol `draw_workshop` (sekmeler `TABS`: 🎯 Mission /
-      🚀 Rocket / 🛠️ Parts; Parts içinde `PART_GROUPS`), orta `draw_dashboard` (`rocket_scene` SVG roket,
-      `gauge_card` ×4, metrikler, rozetler, `draw_advisor`, dev `🚀 LAUNCH` düğmesi = `_launch`), sağ
+      🚀 Rocket / 🛠️ Parts; Parts içinde `PART_GROUPS`), orta `draw_dashboard` (`draw_scene` → `artwork.workshop_scene`:
+      rampada seçilen roket + vitrinde uzay aracı; son değişen parça grubu `SCENE_GROUPS` ile parlar,
+      `gauge_card` ×4, skor şeridi, `draw_advisor`, panelin altına yapışık dev `🚀 LAUNCH` = `_launch`), sağ
       `draw_school_panel` (`current_focus` ile solda seçili hedef/parça hakkında Space School bilgisi:
       `draw_mission_info`, `draw_part_info`, `CATEGORY_KID`).
     - Uçuş aşaması (`phase` = `"flight"`): sol `draw_flight_panel` (`GAME_FEEL_WORDS` + düğmeler),
       orta `draw_flight` (`flight_html` → `assets/flight.html`, `embed_html` ile iframe), sağ `draw_report`
-      (ilk gösterimde animasyon bitene kadar `REPORT_DELAY_S` sn gizli; `draw_leaderboard_save` ismi
-      menüden alır).
+      (ilk gösterimde gizli; animasyon bitince `flight.html` açar, en geç `REPORT_DELAY_S` sn sonra CSS
+      açar; `draw_leaderboard_save` ismi menüden alır).
   - `leaderboard` → `draw_leaderboard_page`, `school` → `draw_school_page`, `options` →
     `draw_options_page` (ses aç/kapa, ses düzeyi, animasyon aç/kapa → `settings`; tasarım kodu yükle /
     yeni tasarım).
-- Mini oyun (`assets/flight.html`): geri sayım → kalkış → Dünya'dan hedefe kıvrımlı yol (aşamalar ✅/❌)
-  → başarılıysa ok tuşları / WASD / dokunma ile uçuş: 💾 veri topla (anten Dünya'ya yollar → 🔬 puan),
+- Fırlatma (`assets/flight.html`, ayarlar `flight_html`'den: `rocket_img` / `craft_img` = artwork SVG'leri,
+  aşamalar `{name, ok, msg}`): sesli geri sayım (`speechSynthesis`) → ateşleme (duman, sarsıntı, motor
+  gürültüsü) → kalkış (kamera izler, gökyüzü kararır, MAX-Q, kademe ayrılması) → Dünya'dan hedefe yol
+  → yörüngeye giriş. Hata olduğu yerde biter: bütçe/yapım → LAUNCH SCRUBBED, fırlatma → patlama (çok
+  ağırsa roket zor yükselir), yolculuk → SIGNAL LOST, yörünge → MISSION LOST. ⏩ Skip ile atlanır.
+- Mini oyun: başarılıysa ok tuşları / WASD / dokunma ile uçuş: 💾 veri topla (anten Dünya'ya yollar → 🔬 puan),
   ⚡ enerji topla, ☄️ asteroitten kaç. Ayarlar `calc.minigame_params`'tan gelir, JS sadece oyun fiziği
   yapar. Bitişte oyuncunun adı ve skoru yazar (en iyi skor tarayıcıda `localStorage`). Sesler Web Audio
   ile üretilir (dosya yok). Mini oyun skoru Python'a dönmez; skor tablosu tasarım puanını kaydeder.
@@ -254,6 +260,7 @@ Takım modu 2026-11-14'te kaldırıldı, oyun sadece tek kişilik. `team_room.py
   parça grubu `s_group`, ayarlar `s_opt_<ad>`, `s_toast`, `_seen` (senkron), `_saved_launches`, `_revealed`.
 - Görünüm: `.streamlit/config.toml` (karanlık tema) + `app.py` sonundaki `CSS`. Çubuk renkleri
   `st.container(key="gauge-<seviye>-<id>")`; telefonda yan yana kalan ızgaralar `key="grid-..."`;
+  masaüstünde (≥1000 px) oyun ekranı tüm ekranı kaplar: 3 panel ekran yüksekliğinde, kendi içinde kayar;
   animasyonlar `fill-mode: backwards` (bitince `transform` kalmaz, alttaki sabit çubuk bozulmaz).
   HTML parçaları `show_html()`, kullanıcı metni `esc()` ile.
 - Skor tablosu `leaderboard.json` dosyasında (GitHub'a gitmez, sunucu yeniden başlarsa sıfırlanır).

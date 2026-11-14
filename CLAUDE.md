@@ -14,10 +14,11 @@ Notes for Claude Code sessions run by the Tech Lead. Since 2026-11-14 the whole 
 | `data.py` | Pure data dicts + `validate_schema()` |
 | `calculations.py` | Pure functions, **no `import streamlit`**; public API documented in its top docstring |
 | `app.py`, `.streamlit/config.toml` | Whole Streamlit UI (solo only; dark theme, pages in `PAGES`, CSS at the end of `app.py`; on-screen word tables `CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`, `GAME_FEEL_WORDS`, `CATEGORY_KID`) |
-| `assets/flight.html` | Launch animation + mini game (vanilla JS, no libraries); `app.py` replaces `__CONFIG__` with JSON. Its timings must match `REPORT_DELAY_S` in `app.py` |
+| `artwork.py` | Pure SVG art (reads `data` only, no streamlit): unique look per rocket (`rocket_image`), spacecraft that changes with the chosen parts (`spacecraft_image`), workshop scene (`workshop_scene`) |
+| `assets/flight.html` | Launch animation + mini game (vanilla JS, no libraries); `app.py` replaces `__CONFIG__` with JSON (incl. `rocket_img` / `craft_img` from artwork). When the animation ends it reveals the report itself (`revealReport`); `REPORT_DELAY_S` in `app.py` is only the CSS fallback and must stay longer than the animation |
 | `AI_CONTEXT.md`, `requirements.txt`, `.gitignore`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md` | Contract and docs |
 
-Data flow: `data.py` → `calculations.py` → `app.py`. The shared contract is `AI_CONTEXT.md`: every data key, the 15-key `selection` dict (`data.SELECTION_KEYS`; `calculations.normalize_selection` fills missing keys so old 8-key selections still work), public functions and their result dicts. `data.CHECK_IDS` fixes the 12 check ids in order; each difficulty's `active_checks` decides which are scored.
+Data flow: `data.py` → `calculations.py` → `app.py` (`artwork.py` reads `data.py` for drawings). The shared contract is `AI_CONTEXT.md`: every data key, the 15-key `selection` dict (`data.SELECTION_KEYS`; `calculations.normalize_selection` fills missing keys so old 8-key selections still work), public functions and their result dicts. `data.CHECK_IDS` fixes the 12 check ids in order; each difficulty's `active_checks` decides which are scored.
 
 ## Contract rules
 - All identifiers, IDs, dict keys **and all on-screen text are English**. Code comments and team docs (`README.md`, `TEAM_RULES.md`, `AI_CONTEXT.md`) are Turkish.

@@ -22,7 +22,8 @@ ayrıntılar "📚 Why? (Learn more)" kutularında.
 | `data.py` | Görev, bilimsel hedef, yörünge, roket, enerji, batarya, bilgisayar, yönelim, kalkan, cihaz, anten, yer istasyonu, uzay olayı, sürpriz kısıt, zorluk, sözlük, ders, takım rolü ve gerçek NASA görevi sözlükleri (sadece veri) |
 | `calculations.py` | Saf Python hesap fonksiyonları, puanlama, fırlatma simülasyonu, analiz, tasarım kodu, skor tablosu (Streamlit yok) |
 | `app.py`, `.streamlit/config.toml` | Streamlit arayüzü (karanlık uzay teması, tek kişilik, çocuk dostu): ana menü (isim, zorluk, Leaderboard, Space School, Options), 3 kolonlu oyun ekranı (sol atölye, orta gösterge paneli + LAUNCH, sağ Space School bilgileri), rapor |
-| `assets/flight.html` | Fırlatma animasyonu + uzay aracı uçurma mini oyunu (saf JavaScript Canvas, sesler Web Audio ile üretilir) |
+| `artwork.py` | Roket ve uzay aracı çizimleri (SVG): her roketin kendi görünümü, seçtiğin parçalar uzay aracında görünür |
+| `assets/flight.html` | Gerçekçi fırlatma animasyonu (sesli geri sayım, ateşleme sesi, duman, kademe ayrılması) + uzay aracı uçurma mini oyunu (saf JavaScript Canvas, sesler Web Audio ile üretilir) |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil

@@ -38,6 +38,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
+import artwork
 import calculations as calc
 import data
 
@@ -59,7 +60,7 @@ def _reload_if_changed(*modules):
     return [new or old for new, old in zip(loaded, modules)]
 
 
-data, calc = _reload_if_changed(data, calc)
+data, calc, artwork = _reload_if_changed(data, calc, artwork)
 
 st.set_page_config(page_title="Mission Control · Space Mission Design Game", page_icon="🚀",
                    layout="wide", initial_sidebar_state="collapsed")
@@ -68,7 +69,7 @@ LEADERBOARD_FILE = Path(__file__).with_name("leaderboard.json")
 FLIGHT_TEMPLATE = Path(__file__).with_name("assets") / "flight.html"
 PREFIX = "s_"                       # widget anahtarları: s_<key>
 LEARN_LABEL = "📚 Why? (Learn more)"  # "Öğren" kutularının başlığı (ekran metni İngilizce)
-REPORT_DELAY_S = 11                 # animasyon bitene kadar rapor gizli kalır (flight.html süreleriyle uyumlu)
+REPORT_DELAY_S = 30                 # yedek: rapor en geç bu kadar sn sonra açılır (normalde flight.html animasyon bitince açar)
 DEFAULT_SETTINGS = {"sound": True, "volume": 70, "animate": True}
 
 CATEGORY_ICONS = {
@@ -88,6 +89,16 @@ PART_GROUPS = {
     "brain": ("🧠 Brain", ["computer", "adcs"]),
 }
 ADVANCED_ONLY = {"battery", "computer", "adcs", "ground_station"}
+
+# Tasarım alanı → atölye sahnesinde parlayan çizim grubu (artwork.py)
+SCENE_GROUPS = {"rocket": "rocket", "power": "power", "power_units": "power", "battery": "battery",
+                "computer": "computer", "adcs": "adcs", "shield": "shield", "comms": "comms",
+                "instruments": "instruments", "mission": "target"}
+
+# Sol listede her kategori için en önemli 2 emoji puan (sade görünüm; hepsi sağ panelde)
+KEY_RATINGS = {"rocket": ["lift", "cost"], "power": ["output", "cost"], "battery": ["energy", "cost"],
+               "computer": ["toughness", "cost"], "adcs": ["aim", "cost"], "shield": ["protection", "mass"],
+               "instruments": ["science", "cost"], "comms": ["range", "speed"], "ground_station": ["speed", "cost"]}
 
 # Her parça kategorisi için çocuk dostu tek cümle (sağdaki Space School paneli)
 CATEGORY_KID = {
@@ -267,10 +278,11 @@ PART_NAME = {category: (lambda table: lambda i: table[i]["name"])(table)
              for category, table in calc.PART_TABLES.items()}
 
 
-def rating_items(category, part_id, design):
-    """Bir parçanın emoji puanları, ör. ["💰💰 Price", "💪💪💪 Lifts"]."""
+def rating_items(category, part_id, design, only=None):
+    """Bir parçanın emoji puanları, ör. ["💰💰 Price", "💪💪💪 Lifts"]. only: sadece bu özellikler."""
     ratings = calc.part_ratings(category, design)[part_id]
-    return [f"{RATING_WORDS[name][0] * level} {RATING_WORDS[name][1]}" for name, level in ratings.items()]
+    names = only or list(ratings)
+    return [f"{RATING_WORDS[name][0] * ratings[name]} {RATING_WORDS[name][1]}" for name in names if name in ratings]
 
 
 def part_tags(category, part_id):
@@ -406,7 +418,7 @@ def part_list(label, key, design):
     return design_widget(
         "cards", label, key, options, design,
         format_func=lambda i: f"{part_icon(key, i)} {PART_NAME[key](i)}",
-        captions=[" · ".join(part_tags(key, i) + rating_items(key, i, design)) for i in options])
+        captions=["   ".join(part_tags(key, i)[:1] + rating_items(key, i, design, KEY_RATINGS[key])) for i in options])
 
 
 # ================================================================
@@ -432,6 +444,11 @@ def apply_change(key, value):
             design["objectives"] = None
     st.session_state["single_design"] = calc.normalize_selection(design)
     record_impact(before, st.session_state["single_design"])
+    # Sahnede son değişen parça kısa bir "pop" animasyonu yapsın (a/b sırayla: aynı grup üst üste değişse de oynar)
+    group = SCENE_GROUPS.get(key)
+    if group:
+        flip = not st.session_state.get("_scene_change", (None, False))[1]
+        st.session_state["_scene_change"] = (group, flip)
 
 
 def _check_id_by_name(name):
@@ -596,14 +613,14 @@ def _pick_mission(mission_id):
 
 
 def draw_mission_panel(design):
-    st.markdown("##### 🌌 Where are we going?")
+    st.markdown("##### 🌌 Where to?")
     draw_target_grid(design)
     m = data.MISSIONS[design["mission"]]
-    st.markdown("##### 🔭 What do we want to find out?")
-    design_widget("pills", "More ⭐ = more points, but you need more science tools!", "objectives",
+    st.markdown("##### 🔭 What to discover?")
+    design_widget("pills", "More ⭐ = more points", "objectives",
                   m["objective_options"], design,
                   format_func=lambda oid: f"{'⭐' * data.OBJECTIVES[oid]['science_value']} {data.OBJECTIVES[oid]['name']}")
-    st.markdown("##### 🪐 How do we fly around it?")
+    st.markdown("##### 🪐 Which orbit?")
     design_widget("cards", "Pick an orbit", "orbit", m["orbit_options"], design,
                   format_func=lambda oid: f"🪐 {data.ORBITS[oid]['name']}", label_visibility="collapsed")
     draw_twist(design, with_button=True)
@@ -627,7 +644,7 @@ def draw_instrument_list(design):
         key = _sync(f"inst_{iid}", iid in design["instruments"])
         st.checkbox(f"{part_icon('instruments', iid)} {PART_NAME['instruments'](iid)}", key=key,
                     on_change=_on_instrument_toggle, args=(options, iid))
-        st.caption(" · ".join(rating_items("instruments", iid, design)))
+        st.caption("   ".join(rating_items("instruments", iid, design, KEY_RATINGS["instruments"])))
 
 
 def draw_parts_panel(design):
@@ -665,7 +682,7 @@ def draw_workshop(design):
                 draw_mission_panel(design)
             elif tab == "rocket":
                 st.markdown("##### 🚀 Pick your rocket")
-                st.caption("Big rockets carry more, but they cost a lot of 💰.")
+                st.caption("💪 = how much it lifts · 💰 = price")
                 part_list("Rocket", "rocket", design)
             else:
                 draw_parts_panel(design)
@@ -674,79 +691,33 @@ def draw_workshop(design):
 # ================================================================
 # OYUN — ORTA KOLON: gösterge paneli (roket, çubuklar, metrikler, LAUNCH)
 # ================================================================
-ROCKET_SCALE = {1: 0.8, 2: 0.9, 3: 1.0}   # roketin kaldırma puanına (1-3) göre çizim boyu
-
-
-def rocket_scene(design, gauges):
-    """Rampadaki roketin SVG çizimi. Ağırlık kırmızıysa roket titrer, güneş paneli/RTG görünür."""
-    m = data.MISSIONS[design["mission"]]
-    lift = calc.part_ratings("rocket", design)[design["rocket"]]["lift"]
+def draw_scene(design, gauges):
+    """Atölye sahnesi (artwork.py): rokete özgü çizim + parçalara göre değişen uzay aracı.
+    Son değişen parça grubu kısa bir parlama ("pop") animasyonu yapar."""
     mass_level = next(g["level"] for g in gauges if g["id"] == "mass")
-    solar = data.POWER_SYSTEMS[design["power"]]["type"] == "solar"
-    extras = ("<rect x='-56' y='-150' width='34' height='14' rx='2' fill='#2b5cff' stroke='#9ec5ff'/>"
-              "<rect x='22' y='-150' width='34' height='14' rx='2' fill='#2b5cff' stroke='#9ec5ff'/>"
-              if solar else
-              "<rect x='18' y='-118' width='12' height='26' rx='3' fill='#5b6478' stroke='#ffd166'/>"
-              "<text x='24' y='-100' font-size='11' text-anchor='middle' fill='#ffd166'>☢</text>")
-    bubble = {"danger": "<text x='160' y='34' font-size='15' text-anchor='middle' fill='#ffb3ba'>😰 Too heavy!</text>",
-              "warning": "<text x='160' y='34' font-size='15' text-anchor='middle' fill='#ffd98a'>😬 Heavy...</text>"}
-    stars = "".join(f"<circle cx='{x}' cy='{y}' r='{r}' fill='#fff' opacity='.7'/>" for x, y, r in
-                    [(24, 40, 1.2), (70, 90, 1), (110, 30, 1.4), (300, 120, 1), (40, 170, 1.1), (290, 200, 1.3),
-                     (240, 30, 1), (190, 70, 1.2), (20, 240, 1), (305, 250, 1.2)])
-    scene = f"""<svg viewBox="0 0 320 300" class="scene-svg" role="img" aria-label="Your rocket on the launch pad">
-      <defs><linearGradient id="rbody" x1="0" x2="1"><stop offset="0" stop-color="#aeb9cf"/>
-      <stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#8a97b1"/></linearGradient></defs>
-      {stars}
-      <path d="M170 120 Q 230 40 268 62" stroke="#4fd1ff" stroke-width="2" stroke-dasharray="4 7" fill="none" opacity=".55"/>
-      <text x="272" y="70" font-size="42" text-anchor="middle" dominant-baseline="middle">{m['emoji']}</text>
-      {bubble.get(mass_level, '')}
-      <rect x="0" y="272" width="320" height="28" fill="#0d1428"/>
-      <rect x="95" y="264" width="130" height="10" rx="3" fill="#2a3a5e"/>
-      <g stroke="#3a4d78" stroke-width="3"><line x1="214" y1="264" x2="214" y2="80"/>
-      <line x1="200" y1="240" x2="214" y2="225"/><line x1="200" y1="200" x2="214" y2="185"/>
-      <line x1="200" y1="160" x2="214" y2="145"/><line x1="200" y1="120" x2="214" y2="105"/></g>
-      <g transform="translate(160 264) scale({ROCKET_SCALE[lift]})"><g class="rk lvl-{mass_level}">
-        <path class="flame" d="M-11 0 Q0 26 11 0 Z" fill="#ff8a3d"/>
-        <path d="M-18 -26 L-36 2 L-18 -4 Z" fill="#fc3d21"/><path d="M18 -26 L36 2 L18 -4 Z" fill="#fc3d21"/>
-        <rect x="-18" y="-170" width="36" height="170" rx="6" fill="url(#rbody)"/>
-        <rect x="-18" y="-58" width="36" height="8" fill="#fc3d21"/>
-        <circle cy="-128" r="8" fill="#4fd1ff" stroke="#0b1430" stroke-width="3"/>
-        <path d="M-18 -170 Q0 -218 18 -170 Z" fill="#fc3d21"/>{extras}
-      </g></g></svg>"""
-    return f"<div class='scene'>{scene}</div>"
-
-
-def on_board_items(design):
-    """Uzay aracında neler var: kısa emoji listesi."""
-    items = [part_icon("instruments", i) for i in design["instruments"]]
-    power_icon = "☀️" if data.POWER_SYSTEMS[design["power"]]["type"] == "solar" else "☢️"
-    items += [f"{power_icon}×{design['power_units']}", "🛡️", "📡"]
-    return items
+    group, flip = st.session_state.get("_scene_change", (None, False))
+    show_html(artwork.workshop_scene(design, mass_level, group, flip))
 
 
 def gauge_card(gauge):
-    """Bir ana kaynak: st.metric (yüzde + kelime) ve renkli st.progress çubuğu."""
+    """Bir ana kaynak: tek satır (ad + kelime) ve renkli st.progress çubuğu."""
     name, words = MAIN_GAUGE_WORDS[gauge["id"]]
-    delta, color = LEVEL_DELTA[gauge["level"]]
-    value = "🚨 Over!" if gauge["level"] == "danger" else ("—" if gauge["level"] == "off" else f"{gauge['fill']:.0%}")
+    word = LEVEL_DELTA[gauge["level"]][0]
     with st.container(key=f"gauge-{gauge['level']}-{gauge['id']}"):
-        st.metric(name, value, delta, delta_color=color, delta_arrow="off",
-                  help=f"How much of your {name.split(' ', 1)[1].lower()} you have used up.")
-        st.progress(min(max(gauge["fill"], 0.0), 1.0), text=words.get(gauge["level"], "Not counted on this level 💤"))
+        st.progress(min(max(gauge["fill"], 0.0), 1.0), text=f"**{name}** · {word}")
 
 
-def draw_advisor(selection, limit=2):
-    """Mühendisin kısa ipuçları: sorun + basit çözüm. Teknik mesaj "Öğren" kutusunda."""
+def draw_advisor(selection, limit=1):
+    """Mühendisin en önemli ipucu (sorun + basit çözüm). Teknik mesaj "Öğren" kutusunda."""
     warnings = [w for w in calc.design_warnings(selection) if w["check"]]
     if not warnings:
-        show_html("<div class='alert alert-ok'><div class='alert-title'>✅ Everything looks great!</div>"
-                  "<div class='alert-msg'>Your spacecraft is ready. Press LAUNCH! 🚀</div></div>")
+        show_html("<div class='alert alert-ok'><div class='alert-title'>✅ All systems GO!</div>"
+                  "<div class='alert-msg'>Press LAUNCH! 🚀</div></div>")
         return
-    show_html("<div class='list-title'>🧑‍🔧 Your engineer says…</div>" + "".join(
-        f"<div class='alert alert-{w['level']}'><div class='alert-title'>{w['icon']} {esc(w['title'])}</div>"
+    more = f"<span class='more'>+{len(warnings) - limit} more</span>" if len(warnings) > limit else ""
+    show_html("".join(
+        f"<div class='alert alert-{w['level']}'><div class='alert-title'>🧑‍🔧 {esc(w['title'])} {more}</div>"
         f"<div class='alert-msg'>👉 {esc(CHECK_WORDS[w['check']][3])}</div></div>" for w in warnings[:limit]))
-    if len(warnings) > limit:
-        st.caption(f"…and {len(warnings) - limit} more thing(s) to fix.")
 
 
 def _launch():
@@ -762,10 +733,8 @@ def draw_dashboard(design):
     active = [c for c in evaluation["checks"] if c["active"]]
     passed = [c for c in active if c["passed"]]
     with st.container(key="panel-center"):
-        show_html("<div class='kicker'>🛰️ LAUNCH PAD</div>")
-        show_html(rocket_scene(design, gauges))
-        show_html(f"<div class='rocket-name'>🚀 {esc(PART_NAME['rocket'](design['rocket']))}</div>"
-                  + chips_html(["🧳 On board:"] + on_board_items(design), "board"))
+        show_html(f"<div class='kicker'>🛰️ LAUNCH PAD · 🚀 {esc(PART_NAME['rocket'](design['rocket']).upper())}</div>")
+        draw_scene(design, gauges)
         main = [g for g in gauges if g["main"]]
         for n, pair in enumerate((main[:2], main[2:])):
             with st.container(key=f"grid-gauges-{n}"):
@@ -773,23 +742,9 @@ def draw_dashboard(design):
             for col, gauge in zip(cols, pair):
                 with col:
                     gauge_card(gauge)
-        with st.container(key="grid-dash-metrics"):
-            col1, col2 = st.columns(2)
-        col1.metric("⭐ Score so far", f"{evaluation['score']} / 100")
-        col2.metric("✅ Systems GO", f"{len(passed)} / {len(active)}")
-        badges = []
-        for g in gauges:
-            if g["main"] or not g["active"]:
-                continue
-            icon, good, bad, _ = CHECK_WORDS[g["id"]]
-            ok = g["level"] != "danger"
-            badges.append(f"<span class='chip badge {'lvl-ok' if ok else 'lvl-danger'}'>"
-                          f"{'✅' if ok else '❌'} {icon} {esc(good if ok else bad)}</span>")
-        if badges:
-            show_html(f"<div class='chips badges'>{''.join(badges)}</div>")
+        show_html(f"<div class='scorebar'><span>⭐ Score <b>{evaluation['score']}</b><i>/100</i></span>"
+                  f"<span>✅ Systems GO <b>{len(passed)}</b><i>/{len(active)}</i></span></div>")
         draw_advisor(design)
-        st.button("🚀  LAUNCH", key="s_launch", type="primary", width="stretch", on_click=_launch)
-        st.caption("Red bars are problems. You can still launch... and see what happens! 🎲")
         with learn_box():
             st.markdown("Every bar shows how much of something you have **used up**. "
                         "🟢 Green = fine, 🟡 yellow = careful, 🔴 red = problem!")
@@ -803,6 +758,8 @@ def draw_dashboard(design):
                 st.markdown("**⚠️ Space surprises you are not protected from:** "
                             + ", ".join(data.SPACE_EVENTS[e]["name"] for e in risks)
                             + ". A thicker shield or a backup antenna helps.")
+        with st.container(key="launch-dock"):
+            st.button("🚀  LAUNCH", key="s_launch", type="primary", width="stretch", on_click=_launch)
     draw_dock(gauges)
 
 
@@ -861,16 +818,18 @@ def draw_mission_info(design):
         <div class="brief"><div class="brief-desc">🎯 {esc(m['description'])}</div>
         <div class="brief-fact">💡 <b>Did you know?</b> {esc(m['fun_fact'])}</div></div>""")
     goals = "".join(f"<div class='goal'><div class='goal-name'>{'⭐' * data.OBJECTIVES[o]['science_value']} "
-                    f"{esc(data.OBJECTIVES[o]['name'])}</div><div class='goal-desc'>{esc(data.OBJECTIVES[o]['description'])}</div>"
-                    f"{chips_html([INSTRUMENT_ICONS.get(t, '🔬') + ' ' + type_label(t) for t in data.OBJECTIVES[o]['required_instrument_types']])}</div>"
+                    f"{esc(data.OBJECTIVES[o]['name'])}</div>"
+                    f"{chips_html(['needs:'] + [INSTRUMENT_ICONS.get(t, '🔬') + ' ' + type_label(t) for t in data.OBJECTIVES[o]['required_instrument_types']])}</div>"
                     for o in design["objectives"])
     show_html(goals)
     orbit = data.ORBITS[design["orbit"]]
     show_html(f"<div class='spec'><div class='spec-title'>🪐 {esc(orbit['name'])}</div>"
-              f"<div class='spec-flavor'>{esc(orbit['description'])}</div>"
-              "<div class='alert-msg'>🤔 Flying <b>close</b> = sharper photos 📸 but more fuel and more dark 🌑. "
-              "Flying <b>far</b> = easier and longer life ⏰.</div></div>")
+              f"<div class='spec-flavor'>{esc(orbit['description'])}</div></div>")
     with learn_box():
+        st.markdown("🤔 Flying **close** = sharper photos 📸 but more fuel and more time in the dark 🌑. "
+                    "Flying **far** = easier and a longer life ⏰.")
+        for oid in design["objectives"]:
+            st.markdown(f"**{data.OBJECTIVES[oid]['name']}:** {data.OBJECTIVES[oid]['description']}")
         req = calc.mission_requirements(design)
         st.markdown("\n".join([
             f"- 💰 Budget: **{req['budget']:,.0f} million $**",
@@ -899,10 +858,10 @@ def draw_part_info(category, part_id, design):
     show_html(f"<div class='info-hero'><div class='info-emoji'>{part_icon(category, part_id)}</div>"
               f"<div class='info-title'>{esc(part['name'])}</div></div>")
     draw_part_card(category, part_id, design)
-    show_html(f"<div class='brief'><div class='brief-desc'>🧒 {esc(CATEGORY_KID[category])}</div>"
-              + (f"<div class='brief-fact'>💡 <b>Did you know?</b> {esc(part['description'])}</div>"
-                 if part.get("description") else "") + "</div>")
+    show_html(f"<div class='brief'><div class='brief-desc'>🧒 {esc(CATEGORY_KID[category])}</div></div>")
     with learn_box():
+        if part.get("description"):
+            st.markdown(f"💡 {part['description']}")
         st.markdown(f"**{part['name']} — exact numbers**")
         st.markdown("\n".join(f"- {line}" for line in part_numbers(category, part_id, design)))
         st.caption("Ratings: 1 icon = a little, 3 icons = a lot (compared with the other choices).")
@@ -931,7 +890,8 @@ def flight_html(design, launch):
     config = {
         "name": player_name(), "target": m["target"], "target_emoji": m["emoji"],
         "rocket": PART_NAME["rocket"](design["rocket"]), "success": result["success"],
-        "stages": [{"name": s["name"], "ok": s["success"]} for s in result["stages"]],
+        "rocket_img": artwork.rocket_image(design["rocket"]), "craft_img": artwork.spacecraft_image(design),
+        "stages": [{"name": s["name"], "ok": s["success"], "msg": s["message"]} for s in result["stages"]],
         "events": [{"name": e["name"], "ok": e["survived"]} for e in result["events"]],
         "game": calc.minigame_params(design),
         "sound": settings["sound"], "volume": settings["volume"], "animate": settings["animate"],
@@ -1089,9 +1049,9 @@ def draw_leaderboard_save(selection, launch):
 def draw_flight(design, launch):
     with st.container(key="panel-center"):
         show_html("<div class='kicker'>🛰️ MISSION LIVE</div>")
-        embed_html(flight_html(design, launch), height=452)
-        st.caption("🖱️ Click the screen first, then fly with the arrow keys or W A S D. "
-                   "On a phone or tablet: touch and drag. 🔊 button = sound on/off.")
+        with st.container(key=f"fade-flight-{launch['id']:.0f}"):
+            embed_html(flight_html(design, launch), height=470)
+        st.caption("🖱️ Click the screen, then fly with the arrow keys or W A S D (phone: touch and drag).")
 
 
 # ================================================================
@@ -1269,8 +1229,25 @@ CSS = """
  radial-gradient(1.6px 1.6px at 190px 160px,#fff 50%,transparent 51%),radial-gradient(1px 1px at 70px 180px,#9ec5ff 50%,transparent 51%),
  radial-gradient(1px 1px at 230px 20px,#fff 50%,transparent 51%),radial-gradient(1.2px 1.2px at 110px 130px,#ffe3c4 50%,transparent 51%);
  background-size:260px 220px;}
-[data-testid="stHeader"]{background:transparent;}
-[data-testid="stMainBlockContainer"]{position:relative;z-index:1;padding-top:1.6rem;padding-bottom:4rem;max-width:1440px;}
+[data-testid="stHeader"],[data-testid="stDecoration"]{display:none!important;}
+[data-testid="stMainBlockContainer"]{position:relative;z-index:1;padding:1.2rem 1.4rem 4rem;max-width:1440px;}
+/* oyun ekranı tüm ekranı kaplar: kenar boşluğu az, 3 panel ekran yüksekliğinde ve kendi içinde kayar */
+.stApp:has(.st-key-page-game) [data-testid="stMainBlockContainer"]{max-width:100%;padding:.55rem .9rem .6rem;}
+.st-key-page-game{gap:.55rem;}
+@media(min-width:1000px){
+ .st-key-page-game .st-key-panel-left,.st-key-page-game .st-key-panel-center,.st-key-page-game .st-key-panel-right{
+  flex:none!important;height:calc(100vh - 5.4rem);overflow-y:auto;overflow-x:hidden;flex-wrap:nowrap;scrollbar-width:thin;scrollbar-color:#33466f transparent;}
+ .st-key-page-game .st-key-panel-left>div,.st-key-page-game .st-key-panel-center>div,.st-key-page-game .st-key-panel-right>div{flex-shrink:0;}
+ .st-key-page-game .scene-svg{max-height:calc(100vh - 25rem);min-height:230px;}
+ /* fırlatma animasyonu orta panelin tüm yüksekliğini kullanır */
+ [class*="st-key-fade-flight-"] [data-testid="stElementContainer"],[class*="st-key-fade-flight-"] iframe{
+  height:max(380px,calc(100vh - 11.5rem))!important;}
+ [data-testid="stLayoutWrapper"]:has(>.st-key-launch-dock){position:sticky;bottom:-1.1rem;z-index:5;margin-top:auto;
+  padding:.9rem 0 1.1rem;background:linear-gradient(180deg,rgba(14,20,36,0) 0%,rgba(14,20,36,.97) 30%);}}
+.scorebar{display:flex;gap:.5rem;justify-content:space-between;margin:.4rem 0 .1rem;}
+.scorebar span{flex:1;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:.35rem .5rem;
+ font-weight:700;color:#d3dae8;white-space:nowrap;} .scorebar b{font-family:'Orbitron',sans-serif;color:#fff;margin-left:.3rem;}
+.scorebar i{font-style:normal;color:var(--muted);font-size:.85em;}
 h1,h2,h3,h4,h5{font-family:'Orbitron',sans-serif!important;letter-spacing:.04em;}
 h5{font-size:.95rem!important;color:#cfe0ff;margin-top:1.1rem!important;margin-bottom:.2rem!important;}
 /* yumuşak geçişler: her sayfa / sekme / bilgi kartı ilk çizildiğinde yukarı kayarak belirir */
@@ -1279,7 +1256,8 @@ h5{font-size:.95rem!important;color:#cfe0ff;margin-top:1.1rem!important;margin-b
 /* "backwards": animasyon bitince transform kalmaz (yoksa position:fixed alt çubuk sayfanın dibine kayar) */
 [class*="st-key-page-"]{animation:fadeUp .55s ease backwards;}
 [class*="st-key-fade-"]{animation:fadeIn .45s ease backwards;}
-[class*="st-key-report-delay-"]{animation:fadeUp .9s ease 11s backwards;}
+[class*="st-key-report-delay-"]{animation:fadeUp .9s ease __REPORT_DELAY__s backwards;}
+@keyframes fadeUpNow{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 /* telefonda da yan yana kalan 2'li ızgaralar (hedef düğmeleri, kaynak kartları, metrikler, üst çubuk) */
 @media(max-width:640px){
  [class*="st-key-grid-"] [data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;gap:.5rem!important;}
@@ -1289,7 +1267,7 @@ h5{font-size:.95rem!important;color:#cfe0ff;margin-top:1.1rem!important;margin-b
  [class*="st-key-gauge-"] [data-testid="stProgress"] p{font-size:.8rem;}
  .topbar{font-size:.85rem;gap:.25rem;}}
 .report-wait{font-family:'Share Tech Mono',monospace;color:var(--cyan);letter-spacing:.12em;text-align:center;padding:1rem;
- animation:blink 1.2s steps(2) infinite, fadeOut .4s ease 11s forwards;}
+ animation:blink 1.2s steps(2) infinite, fadeOut .4s ease __REPORT_DELAY__s forwards;}
 @keyframes blink{50%{opacity:.35;}} @keyframes fadeOut{to{opacity:0;height:0;padding:0;}}
 @media (prefers-reduced-motion: reduce){[class*="st-key-page-"],[class*="st-key-fade-"]{animation:none;}}
 /* menü */
@@ -1306,20 +1284,48 @@ h5{font-size:.95rem!important;color:#cfe0ff;margin-top:1.1rem!important;margin-b
 /* oyun: üst çubuk ve paneller */
 .topbar{display:flex;justify-content:center;flex-wrap:wrap;gap:.5rem;font-size:1.05rem;color:#d3dae8;}
 .tb-name{font-weight:800;color:#fff;} .tb-dot{color:var(--muted);}
-.st-key-panel-left,.st-key-panel-center,.st-key-panel-right{background:rgba(10,16,32,.72);border:1px solid var(--line);
- border-radius:20px;padding:1rem 1rem 1.1rem;}
-.st-key-panel-center{border-color:rgba(252,61,33,.28);}
+/* atölye panelleri: koyu metal levha, köşelerde vida, üstte ince ışık */
+.st-key-panel-left,.st-key-panel-center,.st-key-panel-right{position:relative;border:1px solid #26324f;border-radius:18px;
+ padding:1.1rem 1rem 1.1rem;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 12px 36px rgba(0,0,0,.45);
+ background:radial-gradient(circle at 11px 11px,#56627d 0 2.4px,#1c2438 2.6px 3.6px,transparent 3.8px),
+  radial-gradient(circle at calc(100% - 11px) 11px,#56627d 0 2.4px,#1c2438 2.6px 3.6px,transparent 3.8px),
+  linear-gradient(180deg,#141c31 0%,#0e1424 60%,#0b101d 100%);}
+.st-key-panel-center{border-color:#3a2a2a;padding-top:1.35rem;
+ background:repeating-linear-gradient(135deg,#f5b301 0 10px,#151515 10px 20px) top/100% 7px no-repeat,
+  radial-gradient(circle at 11px 18px,#56627d 0 2.4px,#1c2438 2.6px 3.6px,transparent 3.8px),
+  radial-gradient(circle at calc(100% - 11px) 18px,#56627d 0 2.4px,#1c2438 2.6px 3.6px,transparent 3.8px),
+  linear-gradient(180deg,#151c30 0%,#0e1424 100%);}
 .kicker{font-family:'Share Tech Mono',monospace;color:var(--cyan);letter-spacing:.22em;font-size:.78rem;margin-bottom:.3rem;}
 .scene{border-radius:16px;overflow:hidden;background:radial-gradient(ellipse at 50% 0%,#18295a 0%,#070c1c 70%);
  border:1px solid var(--line);}
-.scene-svg{display:block;width:100%;max-height:300px;}
-.scene-svg .flame{transform-box:fill-box;transform-origin:center top;animation:flicker .18s ease-in-out infinite alternate;}
+.scene-svg{display:block;width:100%;height:auto;max-height:300px;}
+/* atölye sahnesi: canlı küçük animasyonlar (artwork.py sınıfları) */
 .scene-svg .rk.lvl-danger{animation:strain .22s linear infinite;} .scene-svg .rk.lvl-warning{animation:strain .6s linear infinite;}
-@keyframes flicker{from{transform:scaleY(.7);opacity:.8;}to{transform:scaleY(1.15);opacity:1;}}
 @keyframes strain{0%,100%{transform:translateX(0);}25%{transform:translateX(-1.5px);}75%{transform:translateX(1.5px);}}
+.scene-svg .part,.scene-svg .target,.scene-svg .rk-wrap,.scene-svg .vapor{transform-box:fill-box;transform-origin:center;}
+.scene-svg .rk-wrap{transform-origin:center bottom;}
+/* son değişen parça parlar; pop-a / pop-b sırayla gelir ki aynı parça tekrar değişince de oynasın */
+.scene-svg .part.pop-a,.scene-svg .target.pop-a{animation:popA 1s cubic-bezier(.2,.8,.3,1.2);}
+.scene-svg .part.pop-b,.scene-svg .target.pop-b{animation:popB 1s cubic-bezier(.2,.8,.3,1.2);}
+.scene-svg .rk-wrap.pop-a{animation:craneA 1.1s cubic-bezier(.25,.8,.3,1);}
+.scene-svg .rk-wrap.pop-b{animation:craneB 1.1s cubic-bezier(.25,.8,.3,1);}
+@keyframes popA{0%{transform:scale(.4);opacity:0;}45%{transform:scale(1.22);opacity:1;filter:drop-shadow(0 0 6px #4fd1ff) brightness(1.5);}100%{transform:scale(1);filter:none;}}
+@keyframes popB{0%{transform:scale(.4);opacity:0;}45%{transform:scale(1.22);opacity:1;filter:drop-shadow(0 0 6px #4fd1ff) brightness(1.5);}100%{transform:scale(1);filter:none;}}
+@keyframes craneA{0%{transform:translateY(60px) scaleY(.85);opacity:0;}55%{opacity:1;filter:drop-shadow(0 0 10px #ffb070);}80%{transform:translateY(-4px);}100%{transform:none;filter:none;}}
+@keyframes craneB{0%{transform:translateY(60px) scaleY(.85);opacity:0;}55%{opacity:1;filter:drop-shadow(0 0 10px #ffb070);}80%{transform:translateY(-4px);}100%{transform:none;filter:none;}}
+.scene-svg .vapor{fill:#dfe8f5;opacity:0;animation:vapor 3.4s ease-out infinite;}
+.scene-svg .v1{animation-delay:1.1s;} .scene-svg .v2{animation-delay:.5s;animation-duration:4.2s;} .scene-svg .v3{animation-delay:2s;animation-duration:4.6s;}
+@keyframes vapor{0%{opacity:0;transform:scale(.4);}20%{opacity:.55;}100%{opacity:0;transform:translate(8px,-14px) scale(2.2);}}
+.scene-svg .beam{opacity:.55;animation:beam 5s ease-in-out infinite;} .scene-svg .beam.b2{animation-delay:2.2s;}
+@keyframes beam{0%,100%{opacity:.5;}45%{opacity:.75;}50%{opacity:.4;}55%{opacity:.7;}}
+.scene-svg .blink{animation:blinkDot 1.4s steps(2) infinite;} @keyframes blinkDot{50%{opacity:.15;}}
+.scene-svg .craft{animation:float 4.5s ease-in-out infinite;} @keyframes float{50%{transform:translateY(-5px);}}
+.scene-svg .bubble{font-family:'Nunito',sans-serif;font-size:15px;font-weight:800;text-anchor:middle;fill:#ffb3ba;animation:float 1.6s ease-in-out infinite;}
+.scene-svg .bubble.warn{fill:#ffd98a;}
+.scene-svg .stand-label{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.2em;fill:#7fdcff;text-anchor:middle;}
+@media (prefers-reduced-motion: reduce){.scene-svg *{animation:none!important;}}
+.more{font-size:.72rem;padding:.08rem .45rem;border-radius:99px;background:rgba(255,255,255,.08);margin-left:.35rem;font-weight:600;color:var(--muted);}
 [class*="st-key-s_pick_"] button p{white-space:normal;line-height:1.2;font-size:.95rem;}
-.rocket-name{font-family:'Orbitron',sans-serif;text-align:center;margin:.6rem 0 0;font-size:1rem;}
-.chips.board{justify-content:center;margin-top:.3rem;}
 .feel{display:flex;justify-content:space-between;gap:.5rem;align-items:center;background:var(--panel);border:1px solid var(--line);
  border-radius:12px;padding:.55rem .8rem;margin:.4rem 0;} .feel-name{color:var(--muted);} .feel-word{font-weight:800;}
 .info-hero{text-align:center;margin:.3rem 0 .2rem;} .info-emoji{font-size:3.2rem;line-height:1.1;}
@@ -1416,7 +1422,7 @@ h5{font-size:.95rem!important;color:#cfe0ff;margin-top:1.1rem!important;margin-b
 
 
 def inject_css():
-    st.markdown(CSS, unsafe_allow_html=True)
+    st.markdown(CSS.replace("__REPORT_DELAY__", str(REPORT_DELAY_S)), unsafe_allow_html=True)
 
 
 # ================================================================
