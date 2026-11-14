@@ -6,7 +6,7 @@ aşmadan fırlat, yolda güneş fırtınası ve mikro meteor gibi rastgele olayl
 nedenleriyle açıklanan mühendislik karneni al.
 
 - **GitHub:** https://github.com/se-250717020/space-mission-game
-- **Canlı oyun (Streamlit):** _deploy bitince linki buraya yaz_
+- **Canlı oyun (Streamlit):** https://space-mission-game.streamlit.app/
 - **Ekip kuralları, Gemini ile çalışma ve 48 saatlik plan:** **[TEAM_RULES.md](TEAM_RULES.md)**
 - **Yapay zekaya verilecek sözleşme (tüm isimler):** **[AI_CONTEXT.md](AI_CONTEXT.md)**
 
@@ -160,4 +160,4 @@ sadece kendi dosyanın yanındaki **+** işaretine bas, mesaj yaz, **Commit**, s
 
 - [x] GitHub reposu açıldı ve iskelet ilk kez push edildi.
 - [x] 3 arkadaş **Settings → Collaborators** ile eklendi.
-- [ ] Streamlit Cloud'a deploy edildi ve link README'ye yazıldı.
+- [x] Streamlit Cloud'a deploy edildi ve link README'ye yazıldı.

@@ -4,7 +4,7 @@ Notes for Claude Code sessions run by the Tech Lead. Teammates use Gemini (not C
 
 ## Project
 - Python + Streamlit game: pick a mission (Moon / Mars / Europa), design a spacecraft (rocket, power, radiation shield, comms antenna, instruments), launch, get a report card.
-- Repo: https://github.com/se-250717020/space-mission-game (branch `main`, shared with 3 teammates). Deploys to Streamlit Community Cloud with main file `app.py`.
+- Repo: https://github.com/se-250717020/space-mission-game (branch `main`, shared with 3 teammates). Deploys to Streamlit Community Cloud with main file `app.py`: https://space-mission-game.streamlit.app/ (auto-redeploys on every push to `main`).
 - The 4-person team is on its first hackathon, with no web experience. The user is the Tech Lead and speaks Turkish, so reply in Turkish.
 
 ## Files and owners (do not cross these lines without the Tech Lead's OK)

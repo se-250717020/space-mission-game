@@ -125,7 +125,7 @@ serbestçe kullanılabilir (images.nasa.gov); kaynaklarını sunumda belirtin.
 
 ## H. Teslim listesi
 
-- [ ] Çalışan Streamlit linki (README'nin en üstünde)
+- [x] Çalışan Streamlit linki (README'nin en üstünde): https://space-mission-game.streamlit.app/
 - [ ] GitHub reposu (public)
 - [ ] 2 dakikalık demo videosu: problem → oyun nasıl oynanır → hangi NASA görevlerinden ilham alındı
 - [ ] Proje açıklaması (İngilizce): hangi mühendislik kararlarını öğretiyor (bütçe, kütle, güç,
