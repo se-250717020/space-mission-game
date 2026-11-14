@@ -29,6 +29,7 @@ Görünüm (renkler, yazı tipleri, kartlar) en alttaki CSS'te ve .streamlit/con
 """
 
 import html
+import importlib
 import json
 import threading
 import time
@@ -39,6 +40,26 @@ import streamlit.components.v1 as components
 
 import calculations as calc
 import data
+
+
+def _reload_if_changed(*modules):
+    """Streamlit Cloud her push'ta sunucuyu yeniden başlatmadan app.py'yi yeniden çalıştırır; data.py ve
+    calculations.py ise eski halleriyle bellekte kalabilir (ör. yeni fonksiyon "AttributeError" verir).
+    Dosya değiştiyse (ya da modül bu koruma eklenmeden önce yüklendiyse) modülü yeniden yükler.
+    Sıra önemli: önce data, sonra calculations (calculations data'dan içe aktarır)."""
+    loaded = []
+    for module in modules:
+        stamp = Path(module.__file__).stat().st_mtime
+        if getattr(module, "_loaded_mtime", None) != stamp or any(m is not None for m in loaded):
+            module = importlib.reload(module)
+            module._loaded_mtime = stamp
+            loaded.append(module)
+        else:
+            loaded.append(None)
+    return [new or old for new, old in zip(loaded, modules)]
+
+
+data, calc = _reload_if_changed(data, calc)
 
 st.set_page_config(page_title="Mission Control · Space Mission Design Game", page_icon="🚀",
                    layout="wide", initial_sidebar_state="collapsed")
