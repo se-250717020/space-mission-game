@@ -7,19 +7,20 @@ bilim kontrollerini yapar; görev sonucunu, puanı, takım raporunu ve
 fırlatma simülasyonunu döndürür. Sözleşmenin tamamı: AI_CONTEXT.md
 
 KURALLAR:
-  * Burada SADECE saf Python fonksiyonları vardır. `import streamlit` YOK,
+  * Burada SADECE saf Python fonksiyonları vardır. Arayüz/web kodu YOK,
     ekrana çizim YOK. (Böylece arayüzden bağımsız test edilebilir.)
   * Veriler sadece data.py'den okunur, burada sayı uydurulmaz
     (puanlama ağırlıkları hariç, aşağıda).
   * Aşağıdaki "HERKESE AÇIK FONKSİYONLAR" listesindeki fonksiyonların
     İSİMLERİ, PARAMETRELERİ ve DÖNDÜRDÜKLERİ SÖZLÜĞÜN ANAHTARLARI
-    değiştirilmez (yeni anahtar/parametre EKLENEBİLİR). app.py bunlara güveniyor.
+    değiştirilmez (yeni anahtar/parametre EKLENEBİLİR). backend/main.py ve
+    React arayüzü (frontend/) bunlara güveniyor.
   * Yeni yardımcı fonksiyon eklemek serbest (adını _ ile başlat).
 
 Kontrol: terminalde `python calculations.py` → örnek görevleri test eder.
 
 ----------------------------------------------------------------
-"SELECTION" SÖZLÜĞÜ (app.py ile calculations.py arasındaki ortak dil)
+"SELECTION" SÖZLÜĞÜ (arayüz, backend ve calculations.py arasındaki ortak dil)
 ----------------------------------------------------------------
 selection = {
     "mission":        "mars_orbiter",              # MISSIONS ID
@@ -41,7 +42,7 @@ selection = {
 Eksik anahtarlar normalize_selection() ile varsayılanlarla doldurulur
 (DEFAULT_SUBSYSTEMS, DEFAULT_DIFFICULTY, görevin ilk yörüngesi ve ilk hedefi).
 
-HERKESE AÇIK FONKSİYONLAR (app.py bunları kullanır):
+HERKESE AÇIK FONKSİYONLAR (backend/main.py bunları kullanır):
     new_selection(mission, rocket, power, power_units, shield, instruments,
                   comms="low_gain_antenna", orbit=None, objectives=None, battery=None,
                   computer=None, adcs=None, ground_station=None, difficulty=None, twist=None)

@@ -8,7 +8,7 @@ yer istasyonları, uzay olayları, tasarım sürprizleri, zorluk seviyeleri,
 eğitici dersler, sözlük, takım rolleri ve gerçek NASA görevleri.
 Tüm anahtarların listesi ve anlamı: AI_CONTEXT.md
 
-Bu dosyada SADECE veri vardır. Hesaplama yok, Streamlit yok.
+Bu dosyada SADECE veri vardır. Hesaplama yok, arayüz kodu yok.
 
 ŞEMA KURALI (çok önemli):
   * Her sözlüğün dış anahtarı bir "ID"dir: küçük harf, İngilizce,
@@ -16,7 +16,8 @@ Bu dosyada SADECE veri vardır. Hesaplama yok, Streamlit yok.
   * Yeni öğe eklemek serbesttir: mevcut bir öğeyi kopyala, ID'sini ve
     değerlerini değiştir.
   * İÇ ANAHTARLARIN İSMİ DEĞİŞTİRİLMEZ / SİLİNMEZ (ör. "cost_musd").
-    calculations.py ve app.py bu isimleri kullanır; değişirse oyun çöker.
+    calculations.py, backend/main.py ve React arayüzü (frontend/) bu isimleri
+    kullanır; değişirse oyun çöker.
   * Yeni bir iç anahtar gerekiyorsa önce AI_CONTEXT.md'ye eklenir.
   * "name", "description", "target" gibi alanlar ekranda görünen
     metinlerdir; bunlar da İngilizce yazılır.

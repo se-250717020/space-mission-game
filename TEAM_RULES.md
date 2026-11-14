@@ -15,7 +15,7 @@ Kısa, net, herkes uyar.
 |---|---|
 | 1. Kişi — NASA Araştırmacısı | `data.py` değerlerinin gerçek NASA verilerine uygunluğu, `fun_fact`, `REAL_MISSIONS`, kaynaklar |
 | 2. Kişi — Oyun Kuralları | Kontrollerin ve puanlamanın mantıklı olması, oyunun dengesi (kolay/zor), test oyunları |
-| 3. Kişi — Görsel ve Arayüz | Arayüz tasarımı (birlikte yapılacak), görseller (`assets/`), metinlerin çocuklar için anlaşılırlığı |
+| 3. Kişi — Görsel ve Arayüz | Arayüz tasarımı (birlikte yapılacak, `frontend/`), görseller ve animasyonlar, metinlerin çocuklar için anlaşılırlığı |
 | 4. Kişi — Teknik Lider (Emirhan) | Claude Code, commit/push, yayın, sözleşme (`AI_CONTEXT.md`), demo |
 
 > Oyun tek kişiliktir; takım modu 2026-11-14'te kaldırıldı (`team_room.py` silindi).
@@ -28,9 +28,9 @@ Bütün isimlerin tam listesi **[AI_CONTEXT.md](AI_CONTEXT.md)** dosyasındadır
    anahtarları, ID'ler ve ekranda görünen tüm metinler. Sadece kod yorumları ve ekip dokümanları
    Türkçe.
 5. **Sözlük anahtarları ve ID'ler** yeniden adlandırılmaz, silinmez. Yeni öğe *eklemek* serbest.
-6. **`calculations.py` ve `app.py` içindeki mevcut fonksiyonların** adı,
+6. **`calculations.py` içindeki mevcut fonksiyonların** ve **backend'in `/api` uç noktalarının** adı,
    parametreleri ve döndürdüğü sözlüğün anahtarları değişmez. Yeni fonksiyon eklenebilir.
-7. `calculations.py` içine **`import streamlit` yazılmaz.** `app.py` içinde
+7. `calculations.py` saf Python kalır (web/arayüz kodu yok). `backend/main.py` ve `frontend/` içinde
    **hesap yapılmaz** (sayılar `calculations.py`'den istenir).
 8. **Denge kuralı:** her görev her zorlukta en az bir tasarımla geçilebilmeli ama kolay olmamalı.
 
@@ -45,11 +45,12 @@ python calculations.py
 ```
 
 ```bash
-python -m streamlit run app.py
+cd frontend; npm run build
 ```
 
-İlk ikisi hatasız bitmeli; oyun baştan sona (bilgisayar ve telefon görünümü) oynanmalı, kırmızı hata
-kutusu olmamalı. Push'tan önce `git fetch`, `git add` ile sadece değişen dosyalar
+İlk ikisi hatasız bitmeli, React derlenmeli (sonra `frontend/dist` silinir); oyun backend + frontend ile
+baştan sona (bilgisayar ve telefon görünümü) oynanmalı, hata olmamalı. `main`'e yapılan her push canlı
+siteyi (Render) birkaç dakika içinde günceller. Push'tan önce `git fetch`, `git add` ile sadece değişen dosyalar
 (`git add .` değil), `--force` / `reset --hard` **asla**.
 
 ## D. Hata ve fikir bildirme
@@ -70,8 +71,8 @@ NASA görsellerinin çoğu serbestçe kullanılabilir (images.nasa.gov); kaynakl
 
 ## F. Teslim listesi
 
-- [x] Çalışan Streamlit linki: https://space-mission-game.streamlit.app/
-- [ ] GitHub reposu (public)
+- [x] Çalışan oyun linki: https://space-mission-game.onrender.com
+- [x] GitHub reposu (public): https://github.com/se-250717020/space-mission-game
 - [ ] 2 dakikalık demo videosu: problem → oyun nasıl oynanır → hangi NASA görevlerinden ilham alındı
 - [ ] Proje açıklaması (İngilizce): hangi mühendislik kararlarını öğretiyor (bütçe, takvim, kütle,
       güç, batarya, radyasyon, iletişim, veri, yönelim, kapsama, görev ömrü, yörünge ve ödünleşim)

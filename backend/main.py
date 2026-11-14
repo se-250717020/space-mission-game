@@ -4,7 +4,7 @@ backend/main.py  —  FastAPI sunucusu (React arayüzü için)
 React (frontend/) ile oyunun beyni (calculations.py) arasındaki köprü.
 data.py ve calculations.py repo kökünde AYNEN duruyor; burada sadece
 içe aktarılıp HTTP üzerinden sunuluyor. Hesap burada da YAPILMAZ:
-her sayı calculations.py'den gelir (app.py'deki kural gibi).
+her sayı calculations.py'den gelir.
 
 Çalıştırma (repo kökünden):
     .venv\\Scripts\\python.exe -m uvicorn backend.main:app --reload --port 8000
@@ -186,7 +186,7 @@ def game_data():
 
 @app.post("/api/design")
 def design(req: DesignRequest):
-    """Yeni oyun başlatır ya da tasarımda tek bir alanı değiştirir (app.py'deki apply_change gibi)."""
+    """Yeni oyun başlatır ya da tasarımda tek bir alanı değiştirir (kurallar AI_CONTEXT.md bölüm 9)."""
     if req.selection is None:
         mission = req.mission or next(iter(data.MISSIONS))
         difficulty = req.difficulty or data.DEFAULT_DIFFICULTY

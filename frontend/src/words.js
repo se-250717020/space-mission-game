@@ -1,4 +1,4 @@
-// Ekrandaki çocuk dostu kelimeler (eski app.py'deki tablolardan taşındı). Ekran metni İngilizce.
+// Ekrandaki çocuk dostu kelimeler. Ekran metni İngilizce.
 
 export const CATEGORY_ICONS = {
   rocket: '🚀', power: '⚡', battery: '🔋', computer: '🧠', adcs: '🎯', shield: '🛡️',

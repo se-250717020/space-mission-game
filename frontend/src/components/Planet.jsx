@@ -1,4 +1,4 @@
-// Gezegen çizimleri (SVG). Renkler flight.html'deki gezegenlerle aynı.
+// Gezegen çizimleri (SVG). Renkler mini oyundaki (MiniGame.jsx) gezegenlerle aynı.
 export const PLANETS = {
   Earth:  { c: ['#78c8ff', '#1f6fd1', '#082a6e'], glow: 'rgba(100,180,255,.55)', land: true },
   Moon:   { c: ['#f4f4f4', '#a8a8a8', '#454545'], craters: true },

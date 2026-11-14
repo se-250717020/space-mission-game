@@ -1,15 +1,16 @@
 """
 artwork.py  —  Roket ve uzay aracı çizimleri (SVG metni üretir)
 ================================================================
-* Sadece ÇİZİM: oyun hesabı yok, `import streamlit` yok. Parça bilgilerini data.py'den okur.
+* Sadece ÇİZİM: oyun hesabı yok, arayüz kodu yok. Parça bilgilerini data.py'den okur.
 * Her roketin kendine özgü görüntüsü var (gerçek roketlerin renk ve şekline benzer, logo yok).
   Yükseklikler gerçek oranda (PX piksel / metre); çaplar görünsün diye WX kat kalınlaştırılır.
 * Uzay aracı seçilen parçalara göre çizilir: güneş paneli sayısı/boyu, RTG, anten çanağı, kalkan
   rengi ve kalınlığı, bilim cihazları, batarya, bilgisayar ışığı, yönelim sistemi.
-* app.py kullanır:   workshop_scene(design, mass_level, highlight, flip)   (atölye sahnesi, HTML)
-  assets/flight.html için:   rocket_image(rocket_id), spacecraft_image(design)   (tek başına SVG)
+* backend/main.py kullanır:   workshop_scene(design, mass_level, highlight, flip)   (atölye sahnesi, HTML)
+  fırlatma ve mini oyun için:   rocket_image(rocket_id), spacecraft_image(design)   (tek başına SVG)
 * `highlight`: en son değişen parça grubu ("rocket", "power", "battery", "computer", "adcs",
-  "shield", "comms", "instruments", "target"); o grup kısa bir "pop" animasyonu yapar (CSS app.py'de).
+  "shield", "comms", "instruments", "target"); o grup kısa bir "pop" animasyonu yapar
+  (CSS: frontend/src/index.css, ".scene-svg").
 """
 
 import data
@@ -198,7 +199,7 @@ STAGE_SPLIT_M = {"falcon_9": 46, "falcon_heavy": 46, "atlas_v": 32, "vulcan_cent
 
 
 def rocket_image(rocket_id):
-    """Tek başına roket SVG'si (flight.html'de canvas'a resim olarak çizilir).
+    """Tek başına roket SVG'si (React fırlatma animasyonunda resim olarak çizilir).
     Döndürür: {"svg", "width", "height", "base", "split", "plume"} — base: roketin alt noktasının,
     split: kademe ayrılma çizgisinin yükseklik içindeki oranı (üstten); plume: alev yarı genişliği."""
     parts, hw, top = _rocket_parts(rocket_id, "r")

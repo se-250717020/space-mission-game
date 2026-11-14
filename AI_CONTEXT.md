@@ -6,7 +6,7 @@
 
 ## 1. Proje
 
-**Space Mission Design Game** — NASA Space Apps Challenge 2026. Python + Streamlit ile web oyunu.
+**Space Mission Design Game** — NASA Space Apps Challenge 2026. Web oyunu: Python (FastAPI) + React.
 Oyuncu bir görev (Ay, Venüs, Mars, Psyche, Europa, Titan) ve **bilimsel hedefler** seçer; yörünge,
 roket, enerji sistemi, batarya, uçuş bilgisayarı, yönelim kontrolü, radyasyon kalkanı, anten, yer
 istasyonu ve bilimsel cihazlarla uzay aracını tasarlar; bütçe, takvim, kütle, güç, batarya, veri,
@@ -20,7 +20,9 @@ bir mühendislik karnesi, görev sonrası analiz ve en benzer gerçek NASA göre
   fırlatma animasyonu → görev başarılıysa uzay aracını uçurma **mini oyunu** (tasarım oyunda hissedilir).
 - Space School sayfası (sözlük, dersler, gerçek görevler), skor tablosu, tasarım kodu ile kaydet/paylaş.
 
-Canlı oyun Streamlit Community Cloud'da, ana dosya `app.py`.
+Canlı oyun Render'da (ücretsiz plan): https://space-mission-game.onrender.com — `Dockerfile` React'i
+derler, `backend/main.py` hem oyunu hem `/api`'yi tek adresten verir; `main`'e her push siteyi günceller.
+(Eski Streamlit sürümü 2026-11-15'te kaldırıldı.)
 Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geliştiriyor.
 
 ## 2. Dosyalar
@@ -28,16 +30,15 @@ Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geli�
 | Dosya | İçerik |
 |---|---|
 | `data.py` | Sadece veri sözlükleri + `validate_schema()` |
-| `calculations.py` | Saf hesap fonksiyonları, `import streamlit` YOK |
-| `app.py` | Streamlit ekranı, hesap YOK |
-| `artwork.py` | Saf SVG çizimleri (sadece `data`'yı okur, hesap ve `streamlit` YOK): her rokete özgü görünüm (`rocket_image`), seçilen parçalara göre değişen uzay aracı (`spacecraft_image`), atölye sahnesi (`workshop_scene`) |
-| `assets/flight.html` | Gerçekçi fırlatma animasyonu + mini oyun (saf HTML5 Canvas / Vanilla JS, Web Audio sesleri, sesli geri sayım). `app.py` içindeki `__CONFIG__` yerine JSON ayarları koyar |
-| `backend/main.py` | FastAPI sunucusu (React sürümü), hesap YOK: `data.py` + `calculations.py` + `artwork.py`'yi JSON olarak sunar (bölüm 9) |
-| `frontend/` | React + Vite + Tailwind + Framer Motion arayüzü; sayıları sadece backend'den alır, ekran kelime tabloları `frontend/src/words.js` |
-| `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
+| `calculations.py` | Saf hesap fonksiyonları, arayüz/web kodu YOK |
+| `artwork.py` | Saf SVG çizimleri (sadece `data`'yı okur, hesap YOK): her rokete özgü görünüm (`rocket_image`), seçilen parçalara göre değişen uzay aracı (`spacecraft_image`), atölye sahnesi (`workshop_scene`) |
+| `backend/main.py`, `backend/requirements.txt` | FastAPI sunucusu, hesap YOK: `data.py` + `calculations.py` + `artwork.py`'yi JSON olarak sunar (bölüm 9); `frontend/dist` varsa oyunu da `/` adresinden verir |
+| `frontend/` | React + Vite + Tailwind + Framer Motion arayüzü; sayıları sadece backend'den alır (bölüm 7) |
+| `Dockerfile`, `.dockerignore`, `render.yaml` | Render'a yayın (ücretsiz web servisi, Frankfurt) |
+| `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md` | Dokümanlar |
 
-Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (React sürümü: → `backend/main.py` → `frontend/`).
-`app.py` sayıları **sadece** `calculations.py`'den ister, listeleri `data.py`'den okur.
+Bağlantı zinciri: `data.py` → `calculations.py` → `backend/main.py` → `frontend/`.
+Arayüz sayıları **sadece** backend üzerinden `calculations.py`'den alır, listeleri `GET /api/game-data`'dan okur.
 
 ## 3. Değişmez kurallar
 
@@ -45,8 +46,10 @@ Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (React sürüm�
    Ekranda görünen tüm metinler de İngilizce. Sadece yorumlar (`#`, `"""`) Türkçe olabilir.
 2. Mevcut **ID'ler, sözlük anahtarları, public fonksiyon adları/parametreleri ve dönen sözlük
    anahtarları** silinmez, yeniden adlandırılmaz. **Yeni öğe eklemek serbest**.
-3. `calculations.py` içine `import streamlit` yazılmaz. `app.py` içinde hesap yapılmaz.
-4. Yeni bir kütüphane kullanılmaz (sadece `streamlit` ve Python standart kütüphanesi).
+3. `calculations.py`, `data.py` ve `artwork.py` saf Python kalır (web/arayüz kodu yok). `backend/main.py`
+   ve `frontend/` hesap yapmaz; her sayı `calculations.py`'den gelir.
+4. Yeni kütüphane eklenmez: Python tarafında sadece standart kütüphane + `fastapi` / `uvicorn`
+   (backend), arayüzde `react`, `framer-motion`, `vite`, `tailwindcss`.
 5. Dosyaların en üstündeki açıklama yorumu ve `data.py`'deki şema kontrolü korunur.
 6. Denge kuralı: her görev her zorlukta en az bir tasarımla geçilebilmeli ama kolay olmamalı.
 
@@ -221,65 +224,51 @@ Takım modu 2026-11-14'te kaldırıldı, oyun sadece tek kişilik. `team_room.py
 `data.TEAM_ROLES`, `TEAM_GOAL_METRICS` ve `calculations` içindeki `role_report`, `team_goal_metrics`,
 `team_report` sözleşmeyi bozmamak için duruyor ama arayüzde kullanılmıyor.
 
-## 7. Sözleşme: `app.py`
+## 7. Arayüz: `frontend/` (React + Vite + Tailwind + Framer Motion)
 
-- Tek kişilik, sade ve çocuk dostu arayüz. Ekranda **sayı az**: kaynaklar renkli `st.progress`
-  çubukları (yeşil → sarı → kırmızı, `resource_gauges` seviyesine göre CSS ile) ve yüzde + kelime
-  gösteren `st.metric`; parçalar 1-3 emoji puanla (`calc.part_ratings`). Tam sayılar, terimler ve hesap
-  mesajları her zaman `st.expander(LEARN_LABEL)` (`"📚 Why? (Learn more)"`) kutularında.
-- Sayfalar (`st.session_state["page"]`, `PAGES` sözlüğü, `main()` her sayfayı
-  `st.container(key="page-<ad>")` içinde çizer → CSS ile yumuşak geçiş):
-  - `menu` → `draw_menu`: isim (`s_name_input` → `player_name`), zorluk (`s_menu_difficulty`),
-    `▶ START MISSION` (`_start_game`, isim boşsa uyarı), Leaderboard, Space School, Options düğmeleri.
-  - `game` → `draw_game_page`: `draw_topbar` + `st.columns` ile 3 kolon (`layout="wide"`).
-    - Tasarım aşaması (`phase` = `"design"`): sol `draw_workshop` (sekmeler `TABS`: 🎯 Mission /
-      🚀 Rocket / 🛠️ Parts; Parts içinde `PART_GROUPS`), orta `draw_dashboard` (`draw_scene` → `artwork.workshop_scene`:
-      rampada seçilen roket + vitrinde uzay aracı; son değişen parça grubu `SCENE_GROUPS` ile parlar,
-      `gauge_card` ×4, skor şeridi, `draw_advisor`, panelin altına yapışık dev `🚀 LAUNCH` = `_launch`), sağ
-      `draw_school_panel` (`current_focus` ile solda seçili hedef/parça hakkında Space School bilgisi:
-      `draw_mission_info`, `draw_part_info`, `CATEGORY_KID`).
-    - Uçuş aşaması (`phase` = `"flight"`): sol `draw_flight_panel` (`GAME_FEEL_WORDS` + düğmeler),
-      orta `draw_flight` (`flight_html` → `assets/flight.html`, `embed_html` ile iframe), sağ `draw_report`
-      (ilk gösterimde gizli; animasyon bitince `flight.html` açar, en geç `REPORT_DELAY_S` sn sonra CSS
-      açar; `draw_leaderboard_save` ismi menüden alır).
-  - `leaderboard` → `draw_leaderboard_page`, `school` → `draw_school_page`, `options` →
-    `draw_options_page` (ses aç/kapa, ses düzeyi, animasyon aç/kapa → `settings`; tasarım kodu yükle /
-    yeni tasarım).
-- Fırlatma (`assets/flight.html`, ayarlar `flight_html`'den: `rocket_img` / `craft_img` = artwork SVG'leri,
-  aşamalar `{name, ok, msg}`): sesli geri sayım (`speechSynthesis`) → ateşleme (duman, sarsıntı, motor
-  gürültüsü) → kalkış (kamera izler, gökyüzü kararır, MAX-Q, kademe ayrılması) → Dünya'dan hedefe yol
-  → yörüngeye giriş. Hata olduğu yerde biter: bütçe/yapım → LAUNCH SCRUBBED, fırlatma → patlama (çok
-  ağırsa roket zor yükselir), yolculuk → SIGNAL LOST, yörünge → MISSION LOST. ⏩ Skip ile atlanır.
-- Mini oyun: başarılıysa ok tuşları / WASD / dokunma ile uçuş: 💾 veri topla (anten Dünya'ya yollar → 🔬 puan),
-  ⚡ enerji topla, ☄️ asteroitten kaç. Ayarlar `calc.minigame_params`'tan gelir, JS sadece oyun fiziği
-  yapar. Bitişte oyuncunun adı ve skoru yazar (en iyi skor tarayıcıda `localStorage`). Sesler Web Audio
-  ile üretilir (dosya yok). Mini oyun skoru Python'a dönmez; skor tablosu tasarım puanını kaydeder.
-- Ortak: `design_widget(kind, label, key, options, design, format_func=str, **kwargs)` (kind: radio |
-  cards | pills | slider), `part_list`, `draw_part_card`, `rating_items`, `part_tags`, `part_icon`,
-  `part_numbers` (sadece Öğren kutusunda), `apply_change(key, value)`, `draw_twist`, `draw_impact` (toast).
-- Ekran metinleri sözlükleri: `CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `LEVEL_DELTA`, `RATING_WORDS`,
-  `DELTA_WORDS`, `GAME_FEEL_WORDS`, `CATEGORY_KID`, `CATEGORY_LEARN`. Tablo (`st.dataframe`) kullanılmaz.
-- `st.session_state`: `page`, `player_name`, `settings` (`sound`, `volume`, `animate`), `single_design`
-  (selection), `phase`, `launch`, `focus`, widget'lar `s_<key>`, cihaz kutuları `s_inst_<id>`, sekme `s_tab`,
-  parça grubu `s_group`, ayarlar `s_opt_<ad>`, `s_toast`, `_seen` (senkron), `_saved_launches`, `_revealed`.
-- Görünüm: `.streamlit/config.toml` (karanlık tema) + `app.py` sonundaki `CSS`. Çubuk renkleri
-  `st.container(key="gauge-<seviye>-<id>")`; telefonda yan yana kalan ızgaralar `key="grid-..."`;
-  masaüstünde (≥1000 px) oyun ekranı tüm ekranı kaplar: 3 panel ekran yüksekliğinde, kendi içinde kayar;
-  animasyonlar `fill-mode: backwards` (bitince `transform` kalmaz, alttaki sabit çubuk bozulmaz).
-  HTML parçaları `show_html()`, kullanıcı metni `esc()` ile.
-- Skor tablosu `leaderboard.json` dosyasında (GitHub'a gitmez, sunucu yeniden başlarsa sıfırlanır).
+- Tek kişilik, sade ve çocuk dostu arayüz. Ekranda **sayı az**: kaynaklar renkli çubuklar (yeşil → sarı →
+  kırmızı, `resource_gauges` seviyesine göre), parçalar 1-3 emoji puanla (`calc.part_ratings`). Tam
+  sayılar, terimler ve hesap mesajları "📚 Why? (Learn more)" kutularında. Arayüz hesap yapmaz.
+- `src/App.jsx`: sayfalar `menu` → `game` → (`leaderboard`, `school`, `options`); tarayıcıda saklananlar
+  (`localStorage`): `smg_name`, `smg_difficulty`, `smg_settings` (`sound`, `volume`, `animate`, `music`).
+  Arka plan `components/SpaceBackdrop.jsx`.
+- `components/MainMenu.jsx`: isim, zorluk, `START MISSION`, Leaderboard / Space School / Options.
+- `components/GameScreen.jsx`: 3 kolon. Sol `Workshop` (sekmeler 🎯 Mission / 🚀 Rocket / 🛠️ Parts, parça
+  grupları), orta `Dashboard` (atölye sahnesi = `artwork.workshop_scene`, kaynak çubukları, sistem şeridi,
+  "Fix it ➜" ile ilgili parçaya atlama (`FIX_TARGETS`), dev `🚀 LAUNCH`), sağ `InfoPanel` (soldaki seçime
+  göre Space School bilgisi). İlk oyunda `Coach` rehberi çıkar (`smg_seen_guide`).
+- `components/LaunchSequence.jsx`: fırlatma animasyonu (sesli geri sayım, ateşleme, kalkış, kademe
+  ayrılması, Dünya'dan hedefe yol, yörünge). `launch.stages` sırayla oynatılır, hata olan aşamada biter
+  (bütçe/yapım → LAUNCH SCRUBBED, fırlatma → patlama, yolculuk → SIGNAL LOST, yörünge → MISSION LOST).
+  ⏭ Skip ile atlanır.
+- `components/MiniGame.jsx` — **Science Run** (canvas, görev başarılıysa): 💎 bilim topla (hafıza =
+  `data_storage`, uçuş bilgisayarı), Dünya'nın 📡 gönderme bölgesinde Dünya'ya yolla (`zone_send_rate`,
+  anten), üst üste gönderince kombo (`combo_step`, `max_combo`), hafıza tam doluyken gelince tam yük
+  bonusu (`full_load_bonus`), ⚡ enerji topla, ☄️ asteroitten kaç (can = zırh). Ayarlar
+  `calc.minigame_params`'tan gelir, JS sadece oyun fiziği yapar. Bitişte `POST /api/flight-score`
+  (rütbe `FLIGHT_RANKS`), en iyi skor `smg_best_flight`.
+- `components/Report.jsx` (karne, analiz, gerçek NASA görevi, tasarım kodu), `Leaderboard.jsx`
+  (🛠️ Designers / 🧑‍🚀 Pilots), `SpaceSchool.jsx`, `Options.jsx`.
+- Ekran kelimeleri `src/words.js` (`CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`,
+  `GAME_FEEL_WORDS`, `CATEGORY_KID`, `FIX_TARGETS` …); sesler `src/sound.js` (Web Audio ile üretilir,
+  dosya yok: `SFX`, motor sesi, lobi müziği `setMusicMode`); API çağrıları `src/api.js`.
+- Görünüm: Tailwind + `src/index.css`. Animasyonlar sadece `transform` / `opacity`; masaüstü ve telefon
+  genişliğinde çalışır.
+- Skor tabloları `backend/leaderboard.json` ve `backend/flight_scores.json` (GitHub'a gitmez; Render'da
+  sunucu uyuyunca ya da yeniden kurulunca sıfırlanır).
 
 ## 8. Kontrol komutları
 
 ```
 python data.py            # ✅ görmeli
 python calculations.py    # hatasız bitmeli
-python -m streamlit run app.py   # oyunu baştan sona oyna, kırmızı hata kutusu olmamalı
+cd frontend; npm run build   # React derlenmeli (sonra frontend/dist silinir)
 ```
+Sonra backend (8000) + frontend (5173) ile oyun baştan sona oynanır (bilgisayar ve telefon genişliği).
 
-## 9. Sözleşme: `backend/main.py` (React + FastAPI sürümü)
+## 9. Sözleşme: `backend/main.py` (FastAPI)
 
-`app.py`'deki kural burada da geçerli: backend hesap yapmaz, her sayı `calculations.py`'den gelir.
+Backend hesap yapmaz, her sayı `calculations.py`'den gelir.
 `data.py` ve `calculations.py` repo kökünde kalır; backend onları `sys.path` ile içe aktarır.
 CORS açık (`allow_origins=["*"]`). Geliştirmede Vite `/api`'yi `127.0.0.1:8000`'e yönlendirir.
 
@@ -292,6 +281,6 @@ CORS açık (`allow_origins=["*"]`). Geliştirmede Vite `/api`'yi `127.0.0.1:800
 | `POST /api/flight-score` | `{"selection", "player_name", "score", "packets"}` | `entry` (`flight_score_entry`), `saved` (skor tablosu açık zorlukta ve puan > 0 ise kaydedilir), `rank` (1'den başlar), `total`, `top` (ilk 5 FLIGHT) |
 | `GET /api/flight-leaderboard?mission=&limit=10` | — | `rank_flight_scores` listesi (`backend/flight_scores.json`, GitHub'a gitmez) |
 
-Değişiklik kuralları `app.py`'deki `apply_change` ile aynı: zorluk değişince `fit_to_difficulty` +
+Değişiklik kuralları: zorluk değişince `fit_to_difficulty` +
 (Hard'da) yeni sürpriz, görev değişince yörünge ve hedefler sıfırlanır, sonuç `normalize_selection`'dan geçer.
 Geçersiz id veya anahtar → HTTP 400.
