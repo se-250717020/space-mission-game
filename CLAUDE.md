@@ -6,7 +6,7 @@ Notes for Claude Code sessions run by the Tech Lead. Since 2026-11-14 the whole 
 - Python + Streamlit game: pick a target (Moon, Venus, Mars, Psyche, Europa, Titan), science objectives and an orbit; design a spacecraft (rocket, power, battery, flight computer, attitude control, radiation shield, comms antenna, ground station, instruments); launch; get a report card, post-mission analysis and the closest real NASA mission. Single player or team mode (up to 4 players on their own devices, one or more roles each). Difficulties easy / normal / hard (random design twist) / sandbox. Learn, Leaderboard and Compare & Share tabs.
 - Repo: https://github.com/se-250717020/space-mission-game (branch `main`). Deploys to Streamlit Community Cloud with main file `app.py`: https://space-mission-game.streamlit.app/ (auto-redeploys on every push to `main`).
 - The 4-person team is on its first hackathon, with no web experience. The user is the Tech Lead and speaks Turkish, so reply in Turkish.
-- Visual UI design is still to be done together with the user; the current UI is functional but plain.
+- The UI was redesigned on 2026-11-14 as a dark "Mission Control" game (4-step story flow, HUD, instant engineering warnings, countdown, post-flight report). Further visual polish is done together with the user.
 
 ## Files
 | File | Role |
@@ -14,7 +14,7 @@ Notes for Claude Code sessions run by the Tech Lead. Since 2026-11-14 the whole 
 | `data.py` | Pure data dicts + `validate_schema()` |
 | `calculations.py` | Pure functions, **no `import streamlit`**; public API documented in its top docstring |
 | `team_room.py` | `RoomStore` (in-memory shared team rooms, thread-safe), **no `import streamlit`** |
-| `app.py`, `assets/` | Whole Streamlit UI; `RoomStore` opened via `st.cache_resource`, live team view via `st.fragment(run_every=3)` |
+| `app.py`, `assets/`, `.streamlit/config.toml` | Whole Streamlit UI (dark "Mission Control" theme, 4-step flow, HUD, instant warnings, CSS at the end of `app.py`); `RoomStore` opened via `st.cache_resource`, live team view via `st.fragment(run_every=3)` |
 | `AI_CONTEXT.md`, `requirements.txt`, `.gitignore`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md` | Contract and docs |
 
 Data flow: `data.py` → `calculations.py` → `app.py` (+ `team_room.py`). The shared contract is `AI_CONTEXT.md`: every data key, the 15-key `selection` dict (`data.SELECTION_KEYS`; `calculations.normalize_selection` fills missing keys so old 8-key selections still work), public functions and their result dicts. `data.CHECK_IDS` fixes the 12 check ids in order; each difficulty's `active_checks` decides which are scored.

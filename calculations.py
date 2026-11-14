@@ -88,6 +88,9 @@ HERKESE AÇIK FONKSİYONLAR (app.py bunları kullanır):
     compare_designs(selection_a, selection_b) -> [{"label", "unit", "a", "b", "better"}, ...]
     leaderboard_entry(selection, player_name, launch_success) -> ENTRY sözlüğü
     rank_leaderboard(entries, mission=None, difficulty=None, limit=10) -> sıralı ENTRY listesi
+    resource_gauges(selection)           -> GAUGE listesi (görev panosu göstergeleri, aşağıda)
+    design_warnings(selection)           -> WARNING listesi (fırlatmadan önce anlık uyarılar)
+    change_impact(before, after)         -> IMPACT sözlüğü (bir değişikliğin bedeli)
 
 REQUIREMENTS sözlüğü:
     {"budget", "development_months", "radiation_level", "science_target",
@@ -143,6 +146,18 @@ REAL sözlüğü:
 ENTRY sözlüğü:
     {"name", "mission", "mission_name", "difficulty", "score", "grade", "success",
      "launched_ok", "cost", "science", "code"}
+
+GAUGE sözlüğü (resource_gauges):
+    {"id" (CHECK_IDS), "icon", "label", "value", "limit", "unit", "text", "hint",
+     "fill" (0-1), "level" ("ok"/"warning"/"danger"/"off"), "active", "main"}
+
+WARNING sözlüğü (design_warnings):
+    {"id", "check" (CHECK_IDS veya None), "level" ("danger"/"warning"/"info"), "icon",
+     "title", "message"}
+
+IMPACT sözlüğü (change_impact):
+    {"headline", "changed": [{"key", "label", "from", "to"}],
+     "deltas": [{"label", "unit", "delta", "good"}], "new_problems": [str], "solved": [str]}
 """
 
 import base64
@@ -176,6 +191,7 @@ from data import (
     RADIATION_SHIELDS,
     REAL_MISSIONS,
     ROCKETS,
+    SELECTION_KEYS,
     SPACE_EVENTS,
     SPACECRAFT_BUS,
     TEAM_ROLES,
@@ -200,6 +216,10 @@ PART_TABLES = {
     "comms": COMMS_SYSTEMS,
     "ground_station": GROUND_STATIONS,
 }
+
+# Anlık uyarı eşikleri: kaynağın %85'i kullanılınca sarı uyarı, takvimde 3 ay kalınca uyarı
+GAUGE_WARNING_RATIO = 0.85
+SCHEDULE_WARNING_MONTHS = 3
 
 CHECK_NAMES = {
     "budget": "Budget",
@@ -1308,6 +1328,277 @@ def rank_leaderboard(entries, mission=None, difficulty=None, limit=10):
     rows.sort(key=lambda e: (e.get("launched_ok", False), e.get("score", 0), -e.get("cost", 0)),
               reverse=True)
     return rows[:limit]
+
+
+# ----------------------------------------------------------------
+# Arayüz için anlık geri bildirim: göstergeler, uyarılar, değişikliğin bedeli
+# ----------------------------------------------------------------
+def _gauge_level(ratio, active, warn_at=GAUGE_WARNING_RATIO):
+    """Harcama tipi gösterge (az olan iyi): limiti aşınca danger, yaklaşınca warning."""
+    if not active:
+        return "off"
+    if ratio > 1.0:
+        return "danger"
+    if ratio >= warn_at:
+        return "warning"
+    return "ok"
+
+
+def _spacecraft_parts(selection):
+    """Gövde hariç tüm parçalar: [{"key", "name", "mass", "power", "cost", "data", "months"}]."""
+    units = selection["power_units"]
+    power = _power(selection)
+    parts = [{"key": "power", "name": f"{power['name']} ×{units}", "mass": power["mass_kg"] * units,
+              "power": 0, "cost": power["cost_musd"] * units, "data": 0, "months": power["dev_months"]}]
+    for key, part in [("battery", _battery(selection)), ("computer", _computer(selection)),
+                      ("adcs", _adcs(selection)), ("shield", _shield(selection)),
+                      ("comms", _comms(selection))]:
+        parts.append({"key": key, "name": part["name"], "mass": part["mass_kg"],
+                      "power": part.get("power_draw_w", 0), "cost": part["cost_musd"], "data": 0,
+                      "months": part["dev_months"]})
+    for item in _instruments(selection):
+        parts.append({"key": "instruments", "name": item["name"], "mass": item["mass_kg"],
+                      "power": item["power_draw_w"], "cost": item["cost_musd"],
+                      "data": item["data_gb_per_day"], "months": item["dev_months"]})
+    return parts
+
+
+def resource_gauges(selection):
+    """Görev panosunun göstergeleri (CHECK_IDS sırasıyla). Her biri GAUGE sözlüğü:
+    {"id", "icon", "label", "value", "limit", "unit", "text", "hint", "fill" (0-1, çubuk
+     doluluğu), "level" ("ok"/"warning"/"danger"/"off"), "active", "main" (üst bardaki 4 ana kaynak)}"""
+    result = evaluate_mission(selection)
+    s = result["summary"]
+    active = {c["id"]: c["active"] for c in result["checks"]}
+    events_on = _difficulty(selection)["event_multiplier"] > 0
+    gauges = []
+
+    def usage(gid, icon, label, value, limit, unit, spare_text, over_text, main=False, decimals=0):
+        ratio = value / limit if limit > 0 else (0.0 if value <= 0 else 2.0)
+        gap = abs(limit - value)
+        hint = (over_text if value > limit else spare_text).format(f"{gap:,.{decimals}f}")
+        gauges.append({"id": gid, "icon": icon, "label": label, "value": value, "limit": limit,
+                       "unit": unit, "text": f"{value:,.{decimals}f} / {limit:,.{decimals}f} {unit}",
+                       "hint": hint, "fill": min(max(ratio, 0.0), 1.0),
+                       "level": _gauge_level(ratio, active[gid]), "active": active[gid], "main": main})
+
+    def goal(gid, icon, label, have, need, text, hint, ok, warning=False):
+        fill = min(have / need, 1.0) if need > 0 else 1.0
+        level = "off" if not active[gid] else ("danger" if not ok else ("warning" if warning else "ok"))
+        gauges.append({"id": gid, "icon": icon, "label": label, "value": have, "limit": need, "unit": "",
+                       "text": text, "hint": hint, "fill": max(fill, 0.0), "level": level,
+                       "active": active[gid], "main": False})
+
+    usage("budget", "💰", "Budget", s["cost"], s["budget"], "M$", "{} M$ left", "{} M$ over budget", main=True)
+    usage("schedule", "🗓️", "Build time", s["schedule_needed"], s["schedule_available"], "months",
+          "{} months to spare", "{} months too late")
+    usage("mass", "🚀", "Launch mass", s["mass"], s["capacity"], "kg", "{} kg to spare",
+          "{} kg too heavy", main=True)
+    usage("power", "🔋", "Power", s["power_consumed"], s["power_produced"], "W", "{} W to spare",
+          "{} W short", main=True)
+    usage("battery", "🌑", "Eclipse battery", s["battery_needed_wh"], s["battery_usable_wh"], "Wh",
+          "{} Wh to spare", "{} Wh short in the dark")
+    rad_have, rad_need = s["radiation_provided"], s["radiation_required"]
+    goal("radiation", "☢️", "Radiation shield", rad_have, rad_need,
+         f"level {rad_have} / {rad_need} needed",
+         ("no safety margin for solar storms" if rad_have == rad_need and events_on
+          else ("protected" if rad_have >= rad_need else f"{rad_need - rad_have} level(s) short")),
+         rad_have >= rad_need, warning=rad_have == rad_need and events_on)
+    comms_have, comms_need = s["comms_provided"], s["comms_required"]
+    goal("comms", "📶", "Comms range", comms_have, comms_need,
+         f"{COMMS_RANGE_LABELS[comms_have]}",
+         "reaches Earth" if comms_have >= comms_need else f"needs {COMMS_RANGE_LABELS[comms_need]}",
+         comms_have >= comms_need)
+    usage("data", "📡", "Data downlink", s["data_generated"], s["data_downlink"], "GB/day",
+          "{} GB/day to spare", "{} GB/day stuck on board", main=True, decimals=1)
+    p_have, p_need = s["pointing_provided"], s["pointing_required"]
+    goal("pointing", "🎯", "Pointing", p_need, p_have if p_have > 0 else p_need,
+         f"{p_have:g}° (needs {p_need:g}°)",
+         "steady enough" if p_have <= p_need else "too wobbly for your instruments", p_have <= p_need)
+    goal("coverage", "🗺️", "Surface coverage", s["coverage"], s["coverage_required"],
+         f"{s['coverage']}% / {s['coverage_required']}%",
+         "goals covered" if s["coverage"] >= s["coverage_required"] else "orbit misses part of the surface",
+         s["coverage"] >= s["coverage_required"])
+    goal("lifetime", "⏳", "Lifetime", s["lifetime_years"], s["lifetime_required"],
+         f"{s['lifetime_years']:g} / {s['lifetime_required']:g} years",
+         "lasts long enough" if s["lifetime_years"] >= s["lifetime_required"] else "ends too soon",
+         s["lifetime_years"] >= s["lifetime_required"])
+    missing = missing_instrument_types(selection)
+    goal("science", "🔬", "Science", s["science_points"], s["science_target"],
+         f"{s['science_points']} / {s['science_target']} pts",
+         ("missing: " + ", ".join(INSTRUMENT_TYPE_LABELS.get(t, t) for t in missing)) if missing
+         else ("target reached" if s["science_points"] >= s["science_target"] else "below target"),
+         not missing and s["science_points"] >= s["science_target"])
+    return gauges
+
+
+def design_warnings(selection):
+    """Fırlatmadan ÖNCE anlık mühendislik uyarıları (en ciddisi önce). Her biri:
+    {"id", "check", "level" ("danger"/"warning"/"info"), "icon", "title", "message"}"""
+    result = evaluate_mission(selection)
+    s = result["summary"]
+    checks = {c["id"]: c for c in result["checks"]}
+    parts = _spacecraft_parts(selection)
+    rocket = _rocket(selection)
+    warnings = []
+
+    def add(check, level, title, message):
+        if check and not checks[check]["active"]:
+            return
+        icon = {"danger": "🚨", "warning": "⚠️", "info": "💡"}[level]
+        warnings.append({"id": f"{check or 'event'}_{len(warnings)}", "check": check, "level": level,
+                         "icon": icon, "title": title, "message": message})
+
+    def biggest(field):
+        return max(parts, key=lambda p: p[field])
+
+    # Kütle
+    spare = s["capacity"] - s["mass"]
+    heavy = biggest("mass")
+    if spare < 0:
+        add("mass", "danger", f"Too heavy for {rocket['name']}!",
+            f"The spacecraft weighs {s['mass']:,.0f} kg but {rocket['name']} can only carry "
+            f"{s['capacity']:,.0f} kg to this orbit. Heaviest part: {heavy['name']} ({heavy['mass']:,.0f} kg). "
+            "Pick a bigger rocket or a lighter part.")
+    elif s["capacity"] and spare / s["capacity"] < 1 - GAUGE_WARNING_RATIO:
+        add("mass", "warning", "Launch margin is thin",
+            f"Only {spare:,.0f} kg left on {rocket['name']}. One more heavy part and you will not reach orbit.")
+    # Bütçe
+    left = s["budget"] - s["cost"]
+    costs = cost_breakdown(selection)
+    pricey = biggest("cost")
+    if left < 0:
+        top = (rocket["name"], costs["launch"]) if costs["launch"] >= pricey["cost"] else (pricey["name"], pricey["cost"])
+        add("budget", "danger", "Over budget!",
+            f"The mission costs {s['cost']:,.0f} M$ but you only have {s['budget']:,.0f} M$. "
+            f"Biggest bill: {top[0]} ({top[1]:,.0f} M$).")
+    elif s["budget"] and left / s["budget"] < 1 - GAUGE_WARNING_RATIO:
+        add("budget", "warning", "Money is running out",
+            f"Only {left:,.0f} M$ left. Real missions keep a reserve for surprises.")
+    # Güç
+    power = power_balance(selection)
+    hungry = biggest("power")
+    if power["margin_w"] < 0:
+        add("power", "danger", "Power blackout!",
+            f"Your parts need {power['consumed_w']:,.0f} W but you only make {power['produced_w']:,.0f} W. "
+            f"Hungriest part: {hungry['name']} ({hungry['power']:,.0f} W). {checks['power']['tip']}")
+    elif power["consumed_w"] and power["margin_w"] / power["consumed_w"] < 1 - GAUGE_WARNING_RATIO:
+        add("power", "warning", "Power margin is thin",
+            f"Only {power['margin_w']:,.0f} W spare. Panels and RTGs lose power as they age.")
+    # Veri
+    flow = data_balance(selection)
+    chatty = biggest("data")
+    if flow["margin_gb"] < 0:
+        add("data", "danger", "Data traffic jam!",
+            f"Instruments make {flow['generated_gb']:g} GB/day but only {flow['downlink_gb']:g} GB/day can "
+            f"reach Earth. Biggest producer: {chatty['name']} ({chatty['data']:g} GB/day). "
+            "Upgrade the antenna or ground station, or compress data with a smarter computer.")
+    elif flow["downlink_gb"] and flow["generated_gb"] / flow["downlink_gb"] >= GAUGE_WARNING_RATIO:
+        add("data", "warning", "Downlink almost full",
+            f"{flow['generated_gb']:g} of {flow['downlink_gb']:g} GB/day used. Little room for extra science.")
+    # Takvim
+    schedule = development_schedule(selection)
+    if schedule["margin_months"] < 0:
+        add("schedule", "danger", "You will miss the launch window!",
+            f"{schedule['longest_part']} takes too long to build: ready in {schedule['needed_months']:.0f} "
+            f"months, but the window opens in {schedule['available_months']:.0f}.")
+    elif schedule["margin_months"] <= SCHEDULE_WARNING_MONTHS:
+        add("schedule", "warning", "Tight schedule",
+            f"Only {schedule['margin_months']:.0f} months to spare. {schedule['longest_part']} sets the pace.")
+    # Diğer kontroller: kontrolün kendi mesajı + ipucu
+    titles = {"battery": "Batteries die in the dark!", "radiation": "Radiation will fry the electronics!",
+              "comms": "Earth cannot hear you!", "pointing": "Too wobbly to aim!",
+              "coverage": "The orbit misses your targets!", "lifetime": "The mission ends too soon!",
+              "science": "Science goals not met!"}
+    for cid, title in titles.items():
+        check = checks[cid]
+        if not check["passed"]:
+            add(cid, "danger", title, f"{check['message'].rstrip('.')}. {check['tip']}".strip())
+    # Uzay olayları (bu zorlukta olaylar varsa)
+    for eid in event_risks(selection):
+        event = SPACE_EVENTS[eid]
+        if event["protection"] == "backup_comms":
+            add(None, "info", f"No protection from: {event['name']}",
+                "Without a backup antenna, one micrometeoroid hit can cut contact with Earth.")
+        elif s["radiation_provided"] >= s["radiation_required"]:
+            add(None, "info", f"No safety margin: {event['name']}",
+                "Your shield only just meets the requirement. One extra protection level survives storms.")
+    order = {"danger": 0, "warning": 1, "info": 2}
+    warnings.sort(key=lambda w: order[w["level"]])
+    return warnings
+
+
+SELECTION_LABELS = {
+    "mission": "Target", "orbit": "Orbit", "objectives": "Science goals", "rocket": "Rocket",
+    "power": "Power system", "power_units": "Power units", "battery": "Battery",
+    "computer": "Flight computer", "adcs": "Attitude control", "shield": "Radiation shield",
+    "instruments": "Instruments", "comms": "Antenna", "ground_station": "Ground station",
+    "difficulty": "Difficulty", "twist": "Twist",
+}
+
+
+def _value_name(key, value):
+    """Bir selection değerinin ekranda görünen adı."""
+    if value is None:
+        return "none"
+    table = {"mission": MISSIONS, "orbit": ORBITS, "difficulty": DIFFICULTIES,
+             "twist": DESIGN_TWISTS, **PART_TABLES}.get(key)
+    if key in ("objectives", "instruments"):
+        table = OBJECTIVES if key == "objectives" else INSTRUMENTS
+        return ", ".join(table[v]["name"] for v in value) or "none"
+    if table and value in table:
+        return table[value]["name"]
+    return str(value)
+
+
+def change_impact(before, after):
+    """Bir tasarım değişikliğinin bedeli (trade-off). IMPACT sözlüğü:
+    {"headline": str, "changed": [{"key", "label", "from", "to"}],
+     "deltas": [{"label", "unit", "delta", "good"}],   # sadece değişen değerler
+     "new_problems": [kontrol adı], "solved": [kontrol adı]}"""
+    before = normalize_selection(before)
+    after = normalize_selection(after)
+    changed = []
+    for key in SELECTION_KEYS:
+        if before.get(key) != after.get(key):
+            changed.append({"key": key, "label": SELECTION_LABELS.get(key, key),
+                            "from": _value_name(key, before.get(key)),
+                            "to": _value_name(key, after.get(key))})
+    headline = ""
+    if changed:
+        first = changed[0]
+        if first["key"] in ("instruments", "objectives"):
+            old, new = set(before[first["key"]]), set(after[first["key"]])
+            added = [_value_name(first["key"], [v]) for v in after[first["key"]] if v not in old]
+            removed = [_value_name(first["key"], [v]) for v in before[first["key"]] if v not in new]
+            headline = " · ".join(([f"Added {', '.join(added)}"] if added else [])
+                                  + ([f"Removed {', '.join(removed)}"] if removed else []))
+        else:
+            headline = f"{first['label']}: {first['from']} → {first['to']}"
+
+    a, b = evaluate_mission(before), evaluate_mission(after)
+    sa, sb = a["summary"], b["summary"]
+    rows = [("Cost", "M$", sa["cost"], sb["cost"], "lower"),
+            ("Mass", "kg", sa["mass"], sb["mass"], "lower"),
+            ("Rocket capacity", "kg", sa["capacity"], sb["capacity"], "higher"),
+            ("Power to spare", "W", sa["power_produced"] - sa["power_consumed"],
+             sb["power_produced"] - sb["power_consumed"], "higher"),
+            ("Data to spare", "GB/day", sa["data_downlink"] - sa["data_generated"],
+             sb["data_downlink"] - sb["data_generated"], "higher"),
+            ("Science", "pts", sa["science_points"], sb["science_points"], "higher"),
+            ("Build time", "months", sa["schedule_needed"], sb["schedule_needed"], "lower")]
+    deltas = []
+    for label, unit, va, vb, rule in rows:
+        delta = round(vb - va, 2)
+        if delta:
+            deltas.append({"label": label, "unit": unit, "delta": delta,
+                           "good": (delta > 0) == (rule == "higher")})
+    pa = {c["id"]: c["passed"] for c in a["checks"] if c["active"]}
+    pb = {c["id"]: c["passed"] for c in b["checks"] if c["active"]}
+    new_problems = [CHECK_NAMES[c] for c in CHECK_IDS if c in pa and c in pb and pa[c] and not pb[c]]
+    solved = [CHECK_NAMES[c] for c in CHECK_IDS if c in pa and c in pb and not pa[c] and pb[c]]
+    return {"headline": headline, "changed": changed, "deltas": deltas,
+            "new_problems": new_problems, "solved": solved}
 
 
 # ----------------------------------------------------------------

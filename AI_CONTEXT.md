@@ -53,6 +53,8 @@ ID kuralı: küçük harf, İngilizce, boşluk yerine `_` (ör. `"falcon_heavy"`
 Birimler: `_musd` milyon USD · `_kg` kg · `_w` Watt · `_wh` Watt-saat · `_gb_per_day` günde GB ·
 `_years` yıl · `_months` ay · `_minutes` dakika · `_deg` derece · `_km` kilometre.
 **Parça anahtarları** (`PART` = `mass_kg`, `cost_musd`, `dev_months`, `tier` (`"basic"`/`"advanced"`)).
+Ayrıca ROCKETS, POWER_SYSTEMS, BATTERIES, FLIGHT_COMPUTERS, ATTITUDE_CONTROL, RADIATION_SHIELDS, INSTRUMENTS,
+COMMS_SYSTEMS ve GROUND_STATIONS öğelerinin hepsinde `flavor` (ekranda görünen kısa, havalı tanıtım cümlesi) var.
 
 | Sözlük | Her öğenin anahtarları |
 |---|---|
@@ -155,6 +157,9 @@ Public fonksiyonlar (tam açıklama `calculations.py` dosyasının en üstünde)
 | `encode_design(selection)` / `decode_design(code)` | `"SMG1-..."` / selection |
 | `compare_designs(a, b)` | `[{"label", "unit", "a", "b", "better"}]` |
 | `leaderboard_entry(selection, player_name, launch_success)`, `rank_leaderboard(entries, mission=None, difficulty=None, limit=10)` | ENTRY / ENTRY listesi |
+| `resource_gauges(selection)` | GAUGE listesi (CHECK_IDS sırası; HUD ve durum panosu) |
+| `design_warnings(selection)` | WARNING listesi (fırlatmadan önce anlık mühendislik uyarıları, en ciddisi önce) |
+| `change_impact(before, after)` | IMPACT (bir değişikliğin bedeli: ne değişti, artı/eksiler, yeni/çözülen sorunlar) |
 
 ```python
 RESULT = {"success": bool,            # aktif kontrollerin hepsi geçti mi
@@ -177,6 +182,11 @@ REAL   = {"id", "name", "launch_year", "rocket", "mass_kg", "power_type", "cost_
           "similarity_percent", "shared_instrument_types"}
 ENTRY  = {"name", "mission", "mission_name", "difficulty", "score", "grade", "success", "launched_ok",
           "cost", "science", "code"}
+GAUGE  = {"id", "icon", "label", "value", "limit", "unit", "text", "hint", "fill" (0-1),
+          "level" ("ok"/"warning"/"danger"/"off"), "active", "main"}   # main: budget, mass, power, data
+WARNING = {"id", "check", "level" ("danger"/"warning"/"info"), "icon", "title", "message"}
+IMPACT = {"headline", "changed": [{"key", "label", "from", "to"}],
+          "deltas": [{"label", "unit", "delta", "good"}], "new_problems": [str], "solved": [str]}
 ```
 
 Kural özeti:
@@ -218,10 +228,17 @@ giremez; çevrimdışı oyuncu aynı isimle girerse rollerine geri döner.
 
 ## 7. Sözleşme: `app.py`
 
+- Akış (`STEPS`): 🎯 Mission Brief → 🚀 Launch Vehicle → 🛠️ Spacecraft → 🛰️ Launch Control.
+  `draw_design_flow(design, editable, apply_change, prefix, launch_panel)` tek kişi ve takım için ortak:
+  HUD (`draw_hud`, üstte 4 ana kaynak + ekranın altına sabit çubuk), adım çubuğu (`draw_stepper`),
+  son değişikliğin bedeli (`record_impact` / `draw_impact`, kart + toast), anlık uyarılar (`draw_advisor`),
+  4. adımda GO/NO-GO yoklaması (`draw_go_poll`), durum panosu (`draw_gauges`) ve fırlatma.
 - Ortak: `draw_header()`, `ratio_bar(label, value, limit, unit, decimals=0, active=True)`,
-  `type_label(t)`, `role_badge(key)`, `part_caption(category, part_id)`, `PART_FORMAT`.
+  `type_label(t)`, `role_badge(key)`, `part_caption(category, part_id)`, `part_chips(...)`, `PART_FORMAT`,
+  `draw_spec_card(category, part_id, design)`, `part_picker(...)`.
 - Tasarım ekranı (tek kişi ve takım aynı): `design_widget(kind, label, key, options, design,
-  editable, apply_change, prefix, format_func=str, **kwargs)`, `draw_mission_step(...)`,
+  editable, apply_change, prefix, format_func=str, **kwargs)` (kind: select | radio | cards | multi |
+  pills | slider), `draw_mission_step(...)`, `draw_rocket_step(...)`, `draw_instrument_bay(...)`,
   `draw_part_picker(design, editable, apply_change, prefix)`, `draw_gauges(selection)`,
   `draw_launch(selection)`, `draw_report_card(selection, launch_result, team_mode=False, leaderboard_name="",
   saved_by=None, on_save=None)` (aynı fırlatma skor tablosuna bir kez yazılır), `draw_role_picker(code, me, room)`.
@@ -229,7 +246,11 @@ giremez; çevrimdışı oyuncu aynı isimle girerse rollerine geri döner.
   `draw_team_live` → `st.fragment(run_every=3)`), sekmeler `draw_learn_tab`, `draw_leaderboard_tab`,
   `draw_share_tab`, `main()`.
 - `st.session_state`: `single_design` (tek kişilik selection), widget'lar `s_<key>` (tek kişi) ve
-  `t_<key>` (takım), `_seen` (senkron), `launch`, `team` (`{"code", "name"}`), `mode`.
+  `t_<key>` (takım), cihaz kutuları `s_inst_<id>` / `t_inst_<id>`, adım `s_step` / `t_step`,
+  son değişiklik `s_impact` / `t_impact`, `_seen` (senkron), `launch`, `team` (`{"code", "name"}`),
+  `mode` (`"Single Player"` / `"Team Mode (up to 4)"`).
+- Görünüm: `.streamlit/config.toml` (karanlık tema) + `app.py` sonundaki `CSS` (yazı tipleri, kartlar,
+  HUD, konsol, rapor). Sayfadaki HTML parçaları `show_html()` ile çizilir; kullanıcı metni `esc()` ile.
 - Skor tablosu `leaderboard.json` dosyasında (GitHub'a gitmez, sunucu yeniden başlarsa sıfırlanır).
 
 ## 8. Kontrol komutları

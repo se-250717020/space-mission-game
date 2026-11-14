@@ -20,7 +20,7 @@ kendi rolüyle) oynanır.
 | `data.py` | Görev, bilimsel hedef, yörünge, roket, enerji, batarya, bilgisayar, yönelim, kalkan, cihaz, anten, yer istasyonu, uzay olayı, sürpriz kısıt, zorluk, sözlük, ders, takım rolü ve gerçek NASA görevi sözlükleri (sadece veri) |
 | `calculations.py` | Saf Python hesap fonksiyonları, puanlama, fırlatma simülasyonu, analiz, tasarım kodu, skor tablosu (Streamlit yok) |
 | `team_room.py` | Takım modu odaları: oda kodu, roller, ortak tasarım, hazır durumu, sohbet (Streamlit yok) |
-| `app.py`, `assets/` | Streamlit arayüzü: Mission Control, Learn, Leaderboard, Compare & Share sekmeleri |
+| `app.py`, `assets/`, `.streamlit/config.toml` | Streamlit arayüzü (karanlık "Mission Control" teması): 4 adımlı görev akışı, kaynak göstergeleri (HUD), anlık mühendislik uyarıları, geri sayım ve uçuş sonrası rapor; Learn, Leaderboard, Compare & Share sekmeleri |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (+ `team_room.py`). Ortak dil

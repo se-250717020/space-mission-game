@@ -526,6 +526,7 @@ ORBITS = {
 ROCKETS = {
     "falcon_9": {
         "name": "Falcon 9",
+        "flavor": "The reusable workhorse. Lands its own booster and flies almost every week.",
         "cost_musd": 70,
         "leo_capacity_kg": 22800,
         "success_rate": 0.98,
@@ -533,6 +534,7 @@ ROCKETS = {
     },
     "vulcan_centaur": {
         "name": "Vulcan Centaur",
+        "flavor": "A new heavy hitter with a high-energy Centaur upper stage built for deep space.",
         "cost_musd": 115,
         "leo_capacity_kg": 27200,
         "success_rate": 0.96,
@@ -540,6 +542,7 @@ ROCKETS = {
     },
     "atlas_v": {
         "name": "Atlas V 551",
+        "flavor": "Flawless veteran that sent Curiosity and Perseverance to Mars.",
         "cost_musd": 150,
         "leo_capacity_kg": 18850,
         "success_rate": 0.99,
@@ -547,6 +550,7 @@ ROCKETS = {
     },
     "falcon_heavy": {
         "name": "Falcon Heavy",
+        "flavor": "Three Falcon cores strapped together. Thunderous power at a bargain price.",
         "cost_musd": 150,
         "leo_capacity_kg": 63800,
         "success_rate": 0.96,
@@ -554,6 +558,7 @@ ROCKETS = {
     },
     "starship_heavy": {
         "name": "Starship (Deep-Space)",
+        "flavor": "The biggest rocket ever flown. Massive capacity, still earning its trust.",
         "cost_musd": 280,
         "leo_capacity_kg": 100000,
         "success_rate": 0.85,
@@ -562,6 +567,7 @@ ROCKETS = {
     },
     "sls": {
         "name": "SLS Block 1",
+        "flavor": "NASA's moon rocket. Unmatched raw power, with a price tag to match.",
         "cost_musd": 2000,
         "leo_capacity_kg": 95000,
         "success_rate": 0.95,
@@ -580,6 +586,7 @@ ROCKETS = {
 POWER_SYSTEMS = {
     "small_solar_panel": {
         "name": "Small Solar Panel",
+        "flavor": "Light, cheap and simple. Perfect while the Sun is still bright.",
         "type": "solar",
         "power_output_w": 500,
         "mass_kg": 40,
@@ -589,6 +596,7 @@ POWER_SYSTEMS = {
     },
     "large_solar_panel": {
         "name": "Large Solar Panel",
+        "flavor": "A wide wing of cells that drinks in sunlight near the inner planets.",
         "type": "solar",
         "power_output_w": 1500,
         "mass_kg": 120,
@@ -598,6 +606,7 @@ POWER_SYSTEMS = {
     },
     "ultraflex_solar_wing": {
         "name": "Mega Solar Wing (Clipper-Class)",
+        "flavor": "Folds like a fan and opens like a flower. Huge power for its weight.",
         "type": "solar",
         "power_output_w": 3200,
         "mass_kg": 240,
@@ -607,6 +616,7 @@ POWER_SYSTEMS = {
     },
     "rtg": {
         "name": "RTG (Radioisotope Generator)",
+        "flavor": "A nuclear battery that glows warm for decades. No Sun required.",
         "type": "nuclear",
         "power_output_w": 110,
         "mass_kg": 45,
@@ -616,6 +626,7 @@ POWER_SYSTEMS = {
     },
     "nextgen_rtg": {
         "name": "Next-Gen eMMRTG",
+        "flavor": "The next generation of nuclear power: more watts, but a long build.",
         "type": "nuclear",
         "power_output_w": 165,
         "mass_kg": 55,
@@ -632,6 +643,7 @@ POWER_SYSTEMS = {
 BATTERIES = {
     "liion_small": {
         "name": "Small Li-ion Battery",
+        "flavor": "Keeps the lights on through short shadows.",
         "capacity_wh": 800,
         "mass_kg": 8,
         "cost_musd": 5,
@@ -640,6 +652,7 @@ BATTERIES = {
     },
     "liion_medium": {
         "name": "Medium Li-ion Battery",
+        "flavor": "A solid energy reserve for long passes behind the planet.",
         "capacity_wh": 2400,
         "mass_kg": 22,
         "cost_musd": 12,
@@ -648,6 +661,7 @@ BATTERIES = {
     },
     "liion_large": {
         "name": "Large Li-ion Battery Pack",
+        "flavor": "A deep tank of energy for the darkest, longest eclipses.",
         "capacity_wh": 6000,
         "mass_kg": 50,
         "cost_musd": 25,
@@ -667,6 +681,7 @@ BATTERY_MAX_DEPTH_OF_DISCHARGE = 0.6
 FLIGHT_COMPUTERS = {
     "basic_computer": {
         "name": "Commercial Flight Computer",
+        "flavor": "Off-the-shelf brains. Fast and cheap, but nervous around radiation.",
         "description": "Cheap and quick to build, but not hardened against radiation.",
         "data_compression": 1.0,
         "radiation_bonus_levels": 0,
@@ -678,6 +693,7 @@ FLIGHT_COMPUTERS = {
     },
     "rad750_computer": {
         "name": "RAD750 Rad-Hard Computer",
+        "flavor": "The legendary radiation-hardened brain of rovers and orbiters.",
         "description": "The radiation-hardened computer flown on MRO, Curiosity and Juno.",
         "data_compression": 1.0,
         "radiation_bonus_levels": 1,
@@ -689,6 +705,7 @@ FLIGHT_COMPUTERS = {
     },
     "hpsc_computer": {
         "name": "HPSC Next-Gen Computer",
+        "flavor": "Next-gen multicore spaceflight computer that squeezes data before sending it home.",
         "description": "NASA's High Performance Spaceflight Computing chip: smart enough to keep "
                        "only the best data, and radiation-hardened.",
         "data_compression": 0.6,
@@ -708,6 +725,7 @@ FLIGHT_COMPUTERS = {
 ATTITUDE_CONTROL = {
     "thruster_control": {
         "name": "Thrusters + Sun Sensors",
+        "flavor": "Small gas puffs keep you roughly facing the right way.",
         "description": "Simple small thrusters: cheap but only points to within about 1 degree.",
         "pointing_accuracy_deg": 1.0,
         "power_draw_w": 10,
@@ -718,6 +736,7 @@ ATTITUDE_CONTROL = {
     },
     "reaction_wheels": {
         "name": "Reaction Wheels + Star Tracker",
+        "flavor": "Spinning wheels turn the spacecraft smoothly and precisely.",
         "description": "Spinning wheels turn the spacecraft smoothly while a star camera checks "
                        "the direction. The standard choice for science missions.",
         "pointing_accuracy_deg": 0.05,
@@ -729,6 +748,7 @@ ATTITUDE_CONTROL = {
     },
     "precision_pointing": {
         "name": "Precision Pointing System",
+        "flavor": "Star trackers plus fine wheels. Holds steady enough for the sharpest cameras.",
         "description": "Extra gyroscopes and two star trackers for the steadiest pictures.",
         "pointing_accuracy_deg": 0.005,
         "power_draw_w": 50,
@@ -746,6 +766,7 @@ ATTITUDE_CONTROL = {
 RADIATION_SHIELDS = {
     "no_shield": {
         "name": "No Shield",
+        "flavor": "Nothing between your electronics and the cosmos. Brave, or reckless?",
         "protection_level": 0,
         "mass_kg": 0,
         "cost_musd": 0,
@@ -754,6 +775,7 @@ RADIATION_SHIELDS = {
     },
     "light_whipple_shield": {
         "name": "Light Whipple Shield",
+        "flavor": "Thin bumper layers that shatter tiny space debris on impact.",
         "protection_level": 1,
         "mass_kg": 25,
         "cost_musd": 5,
@@ -762,6 +784,7 @@ RADIATION_SHIELDS = {
     },
     "aluminum_plating": {
         "name": "Aluminum Plating",
+        "flavor": "The classic armor. Good protection for a fair weight.",
         "protection_level": 2,
         "mass_kg": 50,
         "cost_musd": 10,
@@ -770,6 +793,7 @@ RADIATION_SHIELDS = {
     },
     "polyethylene_shield": {
         "name": "Polyethylene Hydrogen Shield",
+        "flavor": "Hydrogen-rich plastic that stops particles better than metal, pound for pound.",
         "protection_level": 3,
         "mass_kg": 110,
         "cost_musd": 35,
@@ -778,6 +802,7 @@ RADIATION_SHIELDS = {
     },
     "titanium_vault": {
         "name": "Titanium Electronics Vault",
+        "flavor": "A titanium box around the electronics, like Juno's armored vault.",
         "protection_level": 4,
         "mass_kg": 180,
         "cost_musd": 60,
@@ -786,6 +811,7 @@ RADIATION_SHIELDS = {
     },
     "heavy_tantalum_shield": {
         "name": "Heavy Tantalum Shield",
+        "flavor": "Dense metal fortress for the harshest radiation belts in the solar system.",
         "protection_level": 5,
         "mass_kg": 400,
         "cost_musd": 120,
@@ -804,6 +830,7 @@ RADIATION_SHIELDS = {
 INSTRUMENTS = {
     "hd_camera": {
         "name": "HD Camera",
+        "flavor": "Your eyes on a new world. Colour images for science and for the public.",
         "type": "camera",
         "power_draw_w": 30,
         "mass_kg": 20,
@@ -816,6 +843,7 @@ INSTRUMENTS = {
     },
     "high_res_camera": {
         "name": "High-Resolution Camera",
+        "flavor": "Sees boulders the size of a car from orbit. Data-hungry and needs a steady hand.",
         "type": "camera",
         "power_draw_w": 60,
         "mass_kg": 65,
@@ -828,6 +856,7 @@ INSTRUMENTS = {
     },
     "infrared_spectrometer": {
         "name": "Infrared Spectrometer",
+        "flavor": "Reads the fingerprints of minerals and ice in invisible light.",
         "type": "spectrometer",
         "power_draw_w": 40,
         "mass_kg": 35,
@@ -840,6 +869,7 @@ INSTRUMENTS = {
     },
     "mass_spectrometer": {
         "name": "MASPEX Mass Spectrometer",
+        "flavor": "Sniffs atoms and molecules one by one. The chemist of the crew.",
         "type": "spectrometer",
         "power_draw_w": 55,
         "mass_kg": 45,
@@ -852,6 +882,7 @@ INSTRUMENTS = {
     },
     "ground_radar": {
         "name": "Ground-Penetrating Radar",
+        "flavor": "Pings radio waves deep underground to find buried ice and hidden oceans.",
         "type": "radar",
         "power_draw_w": 120,
         "mass_kg": 60,
@@ -864,6 +895,7 @@ INSTRUMENTS = {
     },
     "magnetometer": {
         "name": "Magnetometer",
+        "flavor": "Feels invisible magnetic fields. Clues to molten cores and buried seas.",
         "type": "magnetometer",
         "power_draw_w": 10,
         "mass_kg": 8,
@@ -876,6 +908,7 @@ INSTRUMENTS = {
     },
     "seismometer": {
         "name": "Seismometer",
+        "flavor": "Listens to the heartbeat of a world through its quakes and tides.",
         "type": "seismometer",
         "power_draw_w": 15,
         "mass_kg": 25,
@@ -908,6 +941,7 @@ INSTRUMENT_TYPE_LABELS = {
 COMMS_SYSTEMS = {
     "low_gain_antenna": {
         "name": "Low-Gain Antenna",
+        "flavor": "Hears Earth from almost any angle, but only whispers back.",
         "range_level": 1,
         "has_backup": False,
         "power_draw_w": 10,
@@ -920,6 +954,7 @@ COMMS_SYSTEMS = {
     },
     "medium_gain_antenna": {
         "name": "Medium-Gain Antenna",
+        "flavor": "A balanced dish: decent range and a steady stream of data.",
         "range_level": 2,
         "has_backup": False,
         "power_draw_w": 30,
@@ -932,6 +967,7 @@ COMMS_SYSTEMS = {
     },
     "medium_gain_with_backup": {
         "name": "Medium-Gain Antenna + Backup",
+        "flavor": "Medium dish plus a spare. One rock cannot cut you off.",
         "range_level": 2,
         "has_backup": True,
         "power_draw_w": 38,
@@ -944,6 +980,7 @@ COMMS_SYSTEMS = {
     },
     "high_gain_antenna": {
         "name": "High-Gain Antenna",
+        "flavor": "A big dish that shouts across the solar system. Must point precisely at Earth.",
         "range_level": 3,
         "has_backup": False,
         "power_draw_w": 60,
@@ -956,6 +993,7 @@ COMMS_SYSTEMS = {
     },
     "high_gain_with_backup": {
         "name": "High-Gain Antenna + Backup",
+        "flavor": "Big dish plus a backup antenna. The choice of flagship missions.",
         "range_level": 3,
         "has_backup": True,
         "power_draw_w": 70,
@@ -983,12 +1021,14 @@ COMMS_RANGE_LABELS = {
 GROUND_STATIONS = {
     "dsn_34m": {
         "name": "DSN 34 m Antenna",
+        "flavor": "Shared 34 m dishes of the Deep Space Network in California, Spain and Australia.",
         "description": "NASA Deep Space Network's workhorse dishes in California, Spain and Australia.",
         "downlink_multiplier": 1.0,
         "cost_musd_per_year": 5,
     },
     "dsn_70m": {
         "name": "DSN 70 m Antenna",
+        "flavor": "The giant 70 m dishes. They still hear Voyager, more than 20 billion km away.",
         "description": "The giant 70 m dishes hear faint signals much better, but time on them is "
                        "expensive and shared by many missions.",
         "downlink_multiplier": 2.0,
@@ -1520,20 +1560,20 @@ SCHEMA = {
     "ORBITS": (ORBITS, ["name", "description", "capacity_multiplier", "science_multiplier",
                         "downlink_factor", "base_lifetime_years", "altitude_km",
                         "coverage_percent", "eclipse_minutes"]),
-    "ROCKETS": (ROCKETS, ["name", "cost_musd", "leo_capacity_kg", "success_rate",
+    "ROCKETS": (ROCKETS, ["name", "flavor", "cost_musd", "leo_capacity_kg", "success_rate",
                           "description"]),
-    "POWER_SYSTEMS": (POWER_SYSTEMS, ["name", "type", "power_output_w"] + _PART_KEYS),
-    "BATTERIES": (BATTERIES, ["name", "capacity_wh"] + _PART_KEYS),
-    "FLIGHT_COMPUTERS": (FLIGHT_COMPUTERS, ["name", "description", "data_compression",
+    "POWER_SYSTEMS": (POWER_SYSTEMS, ["name", "flavor", "type", "power_output_w"] + _PART_KEYS),
+    "BATTERIES": (BATTERIES, ["name", "flavor", "capacity_wh"] + _PART_KEYS),
+    "FLIGHT_COMPUTERS": (FLIGHT_COMPUTERS, ["name", "flavor", "description", "data_compression",
                                             "radiation_bonus_levels", "power_draw_w"] + _PART_KEYS),
-    "ATTITUDE_CONTROL": (ATTITUDE_CONTROL, ["name", "description", "pointing_accuracy_deg",
+    "ATTITUDE_CONTROL": (ATTITUDE_CONTROL, ["name", "flavor", "description", "pointing_accuracy_deg",
                                             "power_draw_w"] + _PART_KEYS),
-    "RADIATION_SHIELDS": (RADIATION_SHIELDS, ["name", "protection_level"] + _PART_KEYS),
-    "INSTRUMENTS": (INSTRUMENTS, ["name", "type", "power_draw_w", "science_points",
+    "RADIATION_SHIELDS": (RADIATION_SHIELDS, ["name", "flavor", "protection_level"] + _PART_KEYS),
+    "INSTRUMENTS": (INSTRUMENTS, ["name", "flavor", "type", "power_draw_w", "science_points",
                                   "data_gb_per_day", "pointing_required_deg"] + _PART_KEYS),
-    "COMMS_SYSTEMS": (COMMS_SYSTEMS, ["name", "range_level", "has_backup", "power_draw_w",
+    "COMMS_SYSTEMS": (COMMS_SYSTEMS, ["name", "flavor", "range_level", "has_backup", "power_draw_w",
                                       "downlink_gb_per_day", "pointing_required_deg"] + _PART_KEYS),
-    "GROUND_STATIONS": (GROUND_STATIONS, ["name", "description", "downlink_multiplier",
+    "GROUND_STATIONS": (GROUND_STATIONS, ["name", "flavor", "description", "downlink_multiplier",
                                           "cost_musd_per_year"]),
     "SPACE_EVENTS": (SPACE_EVENTS, ["name", "probability", "protection", "survive_message",
                                     "fail_message"]),
