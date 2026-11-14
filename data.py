@@ -32,6 +32,10 @@ Kontrol: terminalde `python data.py` çalıştır → şema hatası varsa söyle
 # capacity_factor   : Roketin alçak yörünge (LEO) kapasitesinin ne kadarı
 #                     bu hedefe taşınabilir
 # required_instrument_types : INSTRUMENTS içindeki "type" değerleri
+# min_science_points: görevin başarılı sayılması için gereken en az bilim puanı
+# comms_range_required: 1 = Ay mesafesi, 2 = Mars mesafesi, 3 = Jüpiter mesafesi
+#                       (COMMS_SYSTEMS içindeki "range_level" bundan küçük olamaz)
+# inspired_by / fun_fact: oyuncuya gösterilen NASA bilgi kartı
 MISSIONS = {
     "moon_explorer": {
         "name": "Lunar Surface Explorer",
@@ -43,6 +47,11 @@ MISSIONS = {
         "solar_efficiency": 1.0,
         "capacity_factor": 0.30,
         "required_instrument_types": ["camera", "spectrometer"],
+        "min_science_points": 40,
+        "comms_range_required": 1,
+        "inspired_by": "NASA Lunar Reconnaissance Orbiter & the Artemis program",
+        "fun_fact": "Some craters near the lunar south pole never see sunlight and are among "
+                    "the coldest places in the Solar System, cold enough to trap water ice.",
     },
     "mars_orbiter": {
         "name": "Mars Orbiter",
@@ -54,6 +63,11 @@ MISSIONS = {
         "solar_efficiency": 0.43,
         "capacity_factor": 0.18,
         "required_instrument_types": ["camera", "spectrometer", "radar"],
+        "min_science_points": 75,
+        "comms_range_required": 2,
+        "inspired_by": "NASA Mars Reconnaissance Orbiter (SHARAD radar)",
+        "fun_fact": "Radar on Mars orbiters can see through the surface and has found thick "
+                    "layers of buried water ice.",
     },
     "europa_explorer": {
         "name": "Europa Explorer",
@@ -65,6 +79,11 @@ MISSIONS = {
         "solar_efficiency": 0.037,
         "capacity_factor": 0.05,
         "required_instrument_types": ["camera", "magnetometer", "radar"],
+        "min_science_points": 60,
+        "comms_range_required": 3,
+        "inspired_by": "NASA Europa Clipper",
+        "fun_fact": "Jupiter's radiation is so intense that spacecraft like Juno and Europa "
+                    "Clipper keep their electronics inside thick metal vaults.",
     },
 }
 
@@ -231,7 +250,79 @@ INSTRUMENT_TYPE_LABELS = {
 }
 
 # ----------------------------------------------------------------
-# 6) SPACECRAFT_BUS — Uydu gövdesi (her görevde otomatik eklenir)
+# 6) COMMS_SYSTEMS — İletişim sistemleri (antenler)
+# ----------------------------------------------------------------
+# range_level : 1 = Ay, 2 = Mars, 3 = Jüpiter mesafesine kadar Dünya ile konuşabilir
+# has_backup  : True ise yedek anten var (mikro meteor çarpmasına dayanır)
+COMMS_SYSTEMS = {
+    "low_gain_antenna": {
+        "name": "Low-Gain Antenna",
+        "range_level": 1,
+        "has_backup": False,
+        "power_draw_w": 10,
+        "mass_kg": 5,
+        "cost_musd": 5,
+    },
+    "medium_gain_antenna": {
+        "name": "Medium-Gain Antenna",
+        "range_level": 2,
+        "has_backup": False,
+        "power_draw_w": 30,
+        "mass_kg": 15,
+        "cost_musd": 15,
+    },
+    "high_gain_antenna": {
+        "name": "High-Gain Antenna",
+        "range_level": 3,
+        "has_backup": False,
+        "power_draw_w": 60,
+        "mass_kg": 35,
+        "cost_musd": 30,
+    },
+    "high_gain_with_backup": {
+        "name": "High-Gain Antenna + Backup",
+        "range_level": 3,
+        "has_backup": True,
+        "power_draw_w": 70,
+        "mass_kg": 50,
+        "cost_musd": 45,
+    },
+}
+
+# İletişim menzillerinin ekranda görünen adları
+COMMS_RANGE_LABELS = {
+    1: "Moon distance",
+    2: "Mars distance",
+    3: "Jupiter distance",
+}
+
+# ----------------------------------------------------------------
+# 7) SPACE_EVENTS — Yolculukta rastgele olaylar
+# ----------------------------------------------------------------
+# probability : her fırlatmada bu olayın yaşanma ihtimali (0.0 - 1.0)
+# protection  : neyin koruduğu
+#     "shield_margin" → kalkan seviyesi görevin istediğinden YÜKSEKSE (veya 5 ise) korur
+#     "backup_comms"  → iletişim sisteminde yedek anten (has_backup) varsa korur
+SPACE_EVENTS = {
+    "solar_storm": {
+        "name": "Solar Storm",
+        "probability": 0.15,
+        "protection": "shield_margin",
+        "survive_message": "A solar storm hit, but the extra shielding kept the electronics safe.",
+        "fail_message": "A solar storm fried the electronics! Extra shielding would have saved them.",
+    },
+    "micrometeoroid": {
+        "name": "Micrometeoroid Strike",
+        "probability": 0.15,
+        "protection": "backup_comms",
+        "survive_message": "A micrometeoroid broke the main antenna, but the backup antenna took over.",
+        "fail_message": "A micrometeoroid destroyed the antenna and contact was lost! "
+                        "A backup antenna would have saved the mission.",
+    },
+}
+
+# ----------------------------------------------------------------
+# 8) SPACECRAFT_BUS — Uydu gövdesi (her görevde otomatik eklenir)
 # ----------------------------------------------------------------
 # Bilgisayar, iletişim anteni, yakıt tankı vb. sabit "taban" parçalar.
 SPACECRAFT_BUS = {
@@ -252,7 +343,8 @@ MAX_POWER_UNITS = 6
 SCHEMA = {
     "MISSIONS": (MISSIONS, ["name", "emoji", "target", "description", "budget_musd",
                             "radiation_level", "solar_efficiency", "capacity_factor",
-                            "required_instrument_types"]),
+                            "required_instrument_types", "min_science_points",
+                            "comms_range_required", "inspired_by", "fun_fact"]),
     "ROCKETS": (ROCKETS, ["name", "cost_musd", "leo_capacity_kg", "success_rate",
                           "description"]),
     "POWER_SYSTEMS": (POWER_SYSTEMS, ["name", "type", "power_output_w", "mass_kg",
@@ -261,6 +353,10 @@ SCHEMA = {
                                               "cost_musd"]),
     "INSTRUMENTS": (INSTRUMENTS, ["name", "type", "power_draw_w", "mass_kg", "cost_musd",
                                   "science_points"]),
+    "COMMS_SYSTEMS": (COMMS_SYSTEMS, ["name", "range_level", "has_backup", "power_draw_w",
+                                      "mass_kg", "cost_musd"]),
+    "SPACE_EVENTS": (SPACE_EVENTS, ["name", "probability", "protection", "survive_message",
+                                    "fail_message"]),
 }
 
 
@@ -290,6 +386,21 @@ def validate_schema():
         for t in mission.get("required_instrument_types", []):
             if t not in available_types:
                 errors.append(f"MISSIONS['{mission_id}']: no instrument of type '{t}' exists")
+        if mission.get("comms_range_required") not in COMMS_RANGE_LABELS:
+            errors.append(f"MISSIONS['{mission_id}']: comms_range_required must be one of "
+                          f"{list(COMMS_RANGE_LABELS)}")
+
+    for item_id, item in COMMS_SYSTEMS.items():
+        if item.get("range_level") not in COMMS_RANGE_LABELS:
+            errors.append(f"COMMS_SYSTEMS['{item_id}']: range_level must be one of "
+                          f"{list(COMMS_RANGE_LABELS)}")
+
+    for item_id, item in SPACE_EVENTS.items():
+        if item.get("protection") not in ("shield_margin", "backup_comms"):
+            errors.append(f"SPACE_EVENTS['{item_id}']: protection must be 'shield_margin' "
+                          f"or 'backup_comms'")
+        if not 0 <= item.get("probability", -1) <= 1:
+            errors.append(f"SPACE_EVENTS['{item_id}']: probability must be between 0 and 1")
 
     for key in ["name", "mass_kg", "power_draw_w", "cost_musd"]:
         if key not in SPACECRAFT_BUS:
@@ -306,4 +417,5 @@ if __name__ == "__main__":
         raise SystemExit(1)
     print(f"✅ data.py matches the schema: {len(MISSIONS)} missions, {len(ROCKETS)} rockets, "
           f"{len(POWER_SYSTEMS)} power systems, {len(RADIATION_SHIELDS)} shields, "
-          f"{len(INSTRUMENTS)} instruments.")
+          f"{len(INSTRUMENTS)} instruments, {len(COMMS_SYSTEMS)} comms systems, "
+          f"{len(SPACE_EVENTS)} space events.")

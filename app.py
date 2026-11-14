@@ -69,8 +69,11 @@ def draw_mission_picker():
             f"- **Radiation:** {'☢️' * m['radiation_level']} ({m['radiation_level']}/5)\n"
             f"- **Solar efficiency:** {m['solar_efficiency'] * 100:.0f}%\n"
             f"- **Required instruments:** "
-            f"{', '.join(type_label(t) for t in m['required_instrument_types'])}"
+            f"{', '.join(type_label(t) for t in m['required_instrument_types'])}\n"
+            f"- **Science target:** {m['min_science_points']} points\n"
+            f"- **Comms range needed:** {data.COMMS_RANGE_LABELS[m['comms_range_required']]}"
         )
+        st.info(f"🛰️ **Inspired by:** {m['inspired_by']}\n\n💡 {m['fun_fact']}")
     return mission_id
 
 
@@ -114,6 +117,17 @@ def draw_part_picker(mission_id):
         s = data.RADIATION_SHIELDS[shield_id]
         st.caption(f"{s['mass_kg']} kg · {s['cost_musd']} M$")
 
+        comms_id = st.selectbox(
+            "Communications",
+            options=list(data.COMMS_SYSTEMS.keys()),
+            format_func=lambda cid: data.COMMS_SYSTEMS[cid]["name"],
+            key="sel_comms",
+        )
+        cm = data.COMMS_SYSTEMS[comms_id]
+        st.caption(f"Range: {data.COMMS_RANGE_LABELS[cm['range_level']]} · "
+                   f"{'with backup' if cm['has_backup'] else 'no backup'} · "
+                   f"{cm['power_draw_w']} W · {cm['mass_kg']} kg · {cm['cost_musd']} M$")
+
         instrument_ids = st.multiselect(
             "Science instruments",
             options=list(data.INSTRUMENTS.keys()),
@@ -126,11 +140,12 @@ def draw_part_picker(mission_id):
             st.caption(f"• {i['name']}: {i['power_draw_w']} W · {i['mass_kg']} kg · "
                        f"{i['cost_musd']} M$ · science +{i['science_points']}")
 
-    return calc.new_selection(mission_id, rocket_id, power_id, power_units, shield_id, instrument_ids)
+    return calc.new_selection(mission_id, rocket_id, power_id, power_units, shield_id,
+                              instrument_ids, comms_id)
 
 
 def draw_gauges(selection):
-    """Bütçe, kütle, güç ve radyasyon için canlı ilerleme çubukları."""
+    """Bütçe, kütle, güç, radyasyon, iletişim ve bilim için canlı göstergeler."""
     st.subheader("📊 Engineering Gauges")
     summary = calc.evaluate_mission(selection)["summary"]
 
@@ -143,11 +158,28 @@ def draw_gauges(selection):
     if provided < required:
         st.error("This shield is not strong enough for this mission!")
 
+    comms_needed, comms_have = summary["comms_required"], summary["comms_provided"]
+    st.progress(comms_have / 3, text=f"📡 Comms range: {data.COMMS_RANGE_LABELS[comms_have]} "
+                                     f"(required: {data.COMMS_RANGE_LABELS[comms_needed]})")
+    if comms_have < comms_needed:
+        st.error("This antenna cannot reach Earth from this target!")
+
+    science, target = summary["science_points"], summary["science_target"]
+    st.progress(min(science / target, 1.0) if target > 0 else 1.0,
+                text=f"🔬 Science: {science} / {target} points (target)")
     missing = calc.missing_instrument_types(selection)
     if missing:
         st.warning("Missing instrument types: " + ", ".join(type_label(t) for t in missing))
+
+    risks = calc.event_risks(selection)
+    if risks:
+        st.warning("⚠️ Unprotected against: "
+                   + ", ".join(f"{data.SPACE_EVENTS[e]['name']} "
+                               f"({data.SPACE_EVENTS[e]['probability'] * 100:.0f}% chance)"
+                               for e in risks)
+                   + ". Extra shielding or a backup antenna lowers the risk.")
     else:
-        st.success(f"🔬 All required instruments selected. Science points: {summary['science_points']}")
+        st.success("🛡️ Protected against all known space events.")
 
 
 # ================================================================
@@ -194,16 +226,25 @@ def draw_report_card(selection, launch_result):
     evaluation = calc.evaluate_mission(selection)
     st.subheader("📋 Engineering Report Card")
 
+    summary = evaluation["summary"]
     c1, c2, c3 = st.columns(3)
     c1.metric("Score", f"{evaluation['score']} / 100")
     c2.metric("Grade", evaluation["grade"])
     c3.metric("Launch", "Success" if launch_result["success"] else "Failure")
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Budget efficiency", f"{summary['budget_efficiency']:.0f}% saved")
+    c5.metric("Science contribution", f"{summary['science_points']} / {summary['science_target']}")
+    c6.metric("Space events", len(launch_result["events"]))
 
     for check in evaluation["checks"]:
         st.write(("✅ " if check["passed"] else "❌ ") + f"**{check['name']}:** {check['message']}")
 
     if evaluation["success"] and not launch_result["success"]:
-        st.caption("Your design was right, but rocket failures come down to luck. Try again!")
+        if any(not e["survived"] for e in launch_result["events"]):
+            st.caption("Your design passed every check, but a space event ended the mission. "
+                       "Extra shielding or a backup antenna would have protected it.")
+        else:
+            st.caption("Your design was right, but rocket failures come down to luck. Try again!")
 
 
 # ================================================================

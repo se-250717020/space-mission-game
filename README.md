@@ -1,20 +1,41 @@
 # 🚀 Space Mission Design Game (Uzay Görevi Tasarım Oyunu) — NASA Space Apps Challenge 2026
 
-Bir görev seç (Ay, Mars, Europa), roket + enerji + radyasyon kalkanı + bilimsel cihaz seçerek
-uzay aracını tasarla, bütçeyi ve taşıma kapasitesini aşmadan fırlat, mühendislik karneni al.
+Bir görev seç (Ay, Mars, Europa); roket, enerji sistemi, radyasyon kalkanı, anten ve bilimsel
+cihazları seçerek uzay aracını tasarla. Bütçeyi, taşıma kapasitesini ve güç dengesini aşmadan
+fırlat, yolda güneş fırtınası ve mikro meteor gibi rastgele olaylara karşı dayan, sonunda
+mühendislik karneni al.
+
+- **GitHub:** https://github.com/se-250717020/space-mission-game
+- **Canlı oyun (Streamlit):** _deploy bitince linki buraya yaz_
+- **Ekip kuralları, hazır yapay zeka komutları ve 48 saatlik plan:** **[TEAM_RULES.md](TEAM_RULES.md)**
 
 ## Dosyalar ve sahipleri
 
 | Dosya | Sahibi | İçeriği |
 |---|---|---|
-| `data.py` | 4. Kişi | Görev, roket, enerji, kalkan, cihaz sözlükleri (sadece veri) |
-| `calculations.py` | 1. Kişi | Saf Python hesap fonksiyonları (Streamlit yok) |
-| `app.py` — BÖLÜM A | 2. Kişi | Görev/parça seçimi, ilerleme çubukları |
-| `app.py` — BÖLÜM B | 3. Kişi | Fırlatma simülasyonu, mühendislik karnesi |
+| `data.py` | 4. Kişi | Görev, roket, enerji, kalkan, anten, cihaz ve uzay olayı sözlükleri (sadece veri) |
+| `calculations.py` | 1. Kişi | Saf Python hesap fonksiyonları ve fırlatma simülasyonu (Streamlit yok) |
+| `app.py` — BÖLÜM A | 2. Kişi | Görev/parça seçimi, ilerleme çubukları, risk uyarıları |
+| `app.py` — BÖLÜM B | 3. Kişi | Fırlatma animasyonu, mühendislik karnesi |
 | `requirements.txt`, `app.py` ORTAK/ANA AKIŞ | Tech Lead | Kütüphaneler, ana akış |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil `selection` sözlüğüdür
-(şeması `calculations.py` dosyasının en üstünde). Ekip kuralları için: **[TEAM_RULES.md](TEAM_RULES.md)**
+(şeması `calculations.py` dosyasının en üstünde).
+
+## Oyunun kuralları (kısaca)
+
+| Kontrol | Geçmek için |
+|---|---|
+| Budget | Toplam maliyet ≤ görev bütçesi |
+| Payload Capacity | Araç kütlesi ≤ roketin o hedefe taşıyabileceği kütle |
+| Power Balance | Üretilen güç ≥ tüketilen güç (güneş paneli uzaklaştıkça zayıflar) |
+| Radiation Hardening | Kalkan seviyesi ≥ görevin radyasyon seviyesi |
+| Communications | Anten menzili ≥ görevin istediği menzil |
+| Science Instruments | Gerekli cihaz türlerinin hepsi var ve bilim puanı ≥ görev hedefi |
+
+Rastgele olaylar (her fırlatmada ayrı ayrı %15 ihtimal):
+- **Solar Storm:** kalkan seviyesi görevin istediğinden *yüksekse* zarar vermez.
+- **Micrometeoroid Strike:** antende *yedek* varsa zarar vermez.
 
 ---
 
@@ -22,8 +43,9 @@ Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil `sel
 
 1. **Python 3.11+** kur → https://www.python.org/downloads/ (kurulumda **"Add python.exe to PATH"** kutusunu işaretle).
 2. **Git** kur → https://git-scm.com/download/win (tüm ayarlar varsayılan kalabilir).
+   Kontrol: VS Code terminalinde `git --version` bir sürüm numarası yazmalı.
 3. **VS Code** kur → https://code.visualstudio.com/ , sonra sol taraftaki Extensions'tan **Python** (Microsoft) eklentisini kur.
-4. VS Code terminalinde Git'e kendini tanıt (bir kez):
+4. VS Code terminalinde Git'e kendini tanıt (bir kez; yapmazsan commit'te "Author identity unknown" hatası alırsın):
 
 ```bash
 git config --global user.name "Adın Soyadın"
@@ -33,9 +55,21 @@ git config --global user.name "Adın Soyadın"
 git config --global user.email "github-mailin@ornek.com"
 ```
 
-## 2. Projeyi çalıştırmak
+## 2. Projeyi indirmek (1., 2., 3., 4. Kişi, bir kez)
 
-VS Code'da **File → Open Folder** ile proje klasörünü aç, **Terminal → New Terminal** aç ve:
+GitHub davetini mailden **Accept invitation** ile kabul et. Sonra VS Code terminalinde, projeyi
+koymak istediğin klasörde (ör. Masaüstü):
+
+```bash
+git clone https://github.com/se-250717020/space-mission-game.git
+```
+
+VS Code'da **File → Open Folder** ile `space-mission-game` klasörünü aç.
+
+## 3. Projeyi çalıştırmak
+
+VS Code'da **Terminal → New Terminal** (kısayol: ``Ctrl + ` ``) aç. Terminalin yolu
+`...\space-mission-game>` ile bitmeli. Sonra:
 
 ```bash
 python -m venv .venv
@@ -45,23 +79,29 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-> "running scripts is disabled" hatası alırsan aktifleştirmeyi atla ve komutların başına
-> `.\.venv\Scripts\python.exe -m` ekle (ör. `.\.venv\Scripts\python.exe -m streamlit run app.py`).
-> Satırın başında `(.venv)` yazıyorsa aktifleştirme başarılıdır.
-
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
-Tarayıcıda `http://localhost:8501` açılır. Dosyayı kaydettiğinde sayfada **Rerun** düğmesine bas.
-Durdurmak için terminalde `Ctrl + C`.
+Tarayıcıda `http://localhost:8501` açılır. Oyun açıkken terminali kapatma. Dosyayı kaydettiğinde
+(`Ctrl + S`) sayfada **Rerun** düğmesine bas. Durdurmak için terminalde `Ctrl + C`.
 
-> `data.py` veya `calculations.py`'de yaptığın değişiklik ekranda görünmüyorsa (eski metinler,
-> eski sayılar), sunucuyu `Ctrl + C` ile durdurup `streamlit run app.py` ile yeniden başlat.
+İlk üç komut sadece bir kez çalıştırılır. Sonraki günlerde terminali açınca
+`.\.venv\Scripts\Activate.ps1` ve `python -m streamlit run app.py` yeterli.
+
+**Sık görülen sorunlar:**
+
+| Sorun | Çözüm |
+|---|---|
+| VS Code'un sağ üstteki ▶ (Run) düğmesi hata veriyor | Normal. Streamlit ▶ ile çalışmaz, terminalde `python -m streamlit run app.py` yaz. |
+| `running scripts is disabled` | Aktifleştirmeyi atla, komutları `.\.venv\Scripts\python.exe -m streamlit run app.py` şeklinde yaz. |
+| `No module named streamlit` / `streamlit tanınmadı` | Sanal ortam aktif değil ya da kurulum yapılmadı. `.\.venv\Scripts\Activate.ps1` sonra `python -m pip install -r requirements.txt`. |
+| `data.py` / `calculations.py` değişikliği ekranda görünmüyor | `Ctrl + C` ile durdur, `python -m streamlit run app.py` ile yeniden başlat. |
+| `Author identity unknown` | Bölüm 1'deki iki `git config` komutunu çalıştır. |
 
 Hızlı kontroller (oyunu açmadan):
 
@@ -75,59 +115,13 @@ python calculations.py
 
 VS Code'a sanal ortamı tanıtmak için: `Ctrl+Shift+P` → **Python: Select Interpreter** → `.venv` olanı seç.
 
-## 3. GitHub'a yükleme (SADECE Tech Lead, bir kez)
-
-1. https://github.com/new → Repository name: `uzay-gorevi-oyunu` → **Public** (Streamlit Cloud ücretsiz planı için kolaylık) →
-   README / .gitignore / license **ekleme** (boş repo olsun) → **Create repository**.
-2. Proje klasöründe terminale:
-
-```bash
-git init
-```
-
-```bash
-git add .
-```
-
-```bash
-git commit -m "Baslangic iskeleti"
-```
-
-```bash
-git branch -M main
-```
-
-```bash
-git remote add origin https://github.com/KULLANICI_ADIN/uzay-gorevi-oyunu.git
-```
-
-```bash
-git push -u origin main
-```
-
-İlk push'ta tarayıcıda GitHub girişi açılır, onayla.
-
-3. **Arkadaşları ekle:** GitHub'da repo → **Settings → Collaborators → Add people** → 3 arkadaşın
-   GitHub kullanıcı adını gir. Onlara davet maili gelir, **Accept invitation** demeleri gerekir.
-
-## 4. Arkadaşların projeyi indirmesi (1., 2., 3., 4. Kişi, bir kez)
-
-Daveti kabul ettikten sonra VS Code terminalinde, projeyi koymak istediğin klasörde (ör. Masaüstü):
-
-```bash
-git clone https://github.com/KULLANICI_ADIN/uzay-gorevi-oyunu.git
-```
-
-Sonra VS Code'da **File → Open Folder** ile `uzay-gorevi-oyunu` klasörünü aç ve **Bölüm 2**'deki
-adımları uygula (`.venv` herkesin kendi bilgisayarında ayrıca kurulur, GitHub'a gitmez).
-
-## 5. Günlük çalışma döngüsü
+## 4. Günlük çalışma döngüsü
 
 ```bash
 git pull
 ```
 
-→ kendi dosyanı düzenle → `streamlit run app.py` ile dene → çalışıyorsa:
+→ kendi dosyanı düzenle → `python -m streamlit run app.py` ile dene → çalışıyorsa:
 
 ```bash
 git add DOSYA_ADIN.py
@@ -145,9 +139,20 @@ git pull
 git push
 ```
 
-## 6. İnternete yayınlama (Streamlit Community Cloud, Tech Lead)
+Terminal yerine VS Code'un sol taraftaki **Source Control** sekmesini de kullanabilirsin:
+sadece kendi dosyanın yanındaki **+** işaretine bas, mesaj yaz, **Commit**, sonra **Sync Changes**.
+
+## 5. İnternete yayınlama (Streamlit Community Cloud, Tech Lead)
 
 1. https://share.streamlit.io → GitHub ile giriş yap.
-2. **Create app → Deploy a public app from GitHub** → Repository: `uzay-gorevi-oyunu`,
-   Branch: `main`, Main file path: `app.py` → **Deploy**.
-3. Bundan sonra `main`'e yapılan her push birkaç dakika içinde siteye otomatik yansır.
+2. **Create app → Deploy a public app from GitHub** seç. ("Get started from a template" **değil**.)
+3. Repository: `se-250717020/space-mission-game` · Branch: `main` · Main file path: `app.py` ·
+   App URL (isteğe bağlı): `space-mission-game` → **Deploy**.
+4. Çıkan `.streamlit.app` linkini bu README'nin en üstüne yaz.
+   Bundan sonra `main`'e yapılan her push birkaç dakika içinde siteye otomatik yansır.
+
+## 6. Kurulum geçmişi (Tech Lead, yapıldı ✅)
+
+- [x] GitHub reposu açıldı ve iskelet ilk kez push edildi.
+- [x] 3 arkadaş **Settings → Collaborators** ile eklendi.
+- [ ] Streamlit Cloud'a deploy edildi ve link README'ye yazıldı.
