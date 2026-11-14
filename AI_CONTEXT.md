@@ -16,7 +16,9 @@ bir mühendislik karnesi, görev sonrası analiz ve en benzer gerçek NASA göre
 - **Tek oyunculu**, ilkokul öğrencisinin bile anlayacağı sade bir dille; teknik ayrıntılar
   "📚 Why? (Learn more)" kutularında. (Takım modu 2026-11-14'te kaldırıldı.)
 - **Zorluk seviyeleri:** Easy, Normal, Hard (sürpriz kısıt + tüm kontroller), Sandbox.
-- Öğren sekmesi (sözlük, dersler, gerçek görevler), skor tablosu, tasarım kodu ile kaydet/paylaş/karşılaştır.
+- Ana menü (isim, zorluk, Leaderboard, Space School, Options) → 3 kolonlu oyun ekranı → LAUNCH →
+  fırlatma animasyonu → görev başarılıysa uzay aracını uçurma **mini oyunu** (tasarım oyunda hissedilir).
+- Space School sayfası (sözlük, dersler, gerçek görevler), skor tablosu, tasarım kodu ile kaydet/paylaş.
 
 Canlı oyun Streamlit Community Cloud'da, ana dosya `app.py`.
 Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geliştiriyor.
@@ -28,7 +30,7 @@ Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geli�
 | `data.py` | Sadece veri sözlükleri + `validate_schema()` |
 | `calculations.py` | Saf hesap fonksiyonları, `import streamlit` YOK |
 | `app.py` | Streamlit ekranı, hesap YOK |
-| `assets/` | Görseller, GIF'ler (arayüz tasarımında eklenecek) |
+| `assets/flight.html` | Fırlatma animasyonu + mini oyun (saf HTML5 Canvas / Vanilla JS, Web Audio sesleri). `app.py` içindeki `__CONFIG__` yerine JSON ayarları koyar |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`.
@@ -158,6 +160,7 @@ Public fonksiyonlar (tam açıklama `calculations.py` dosyasının en üstünde)
 | `resource_gauges(selection)` | GAUGE listesi (CHECK_IDS sırası; HUD ve durum panosu) |
 | `design_warnings(selection)` | WARNING listesi (fırlatmadan önce anlık mühendislik uyarıları, en ciddisi önce) |
 | `change_impact(before, after)` | IMPACT (bir değişikliğin bedeli: ne değişti, artı/eksiler, yeni/çözülen sorunlar) |
+| `minigame_params(selection)` | MINIGAME: `{"agility", "energy_drain", "lives", "data_storage", "downlink_rate", "packet_points", "asteroid_rate", "seconds", "ratings": {"agility", "energy", "lives", "data"} (1-3)}` — mini oyun ayarları: kütle/roket kapasitesi → çeviklik, güç payı → enerji azalması, fazla radyasyon koruması + yedek anten → can, bilgisayar sıkıştırması → hafıza, veri payı → gönderim hızı, bilim puanı/hedef → paket puanı, zorluğun olay çarpanı → asteroit sıklığı |
 | `part_ratings(category, selection=None)` | `{part_id: {özellik: 1, 2 veya 3}}` — parçaları sayısız karşılaştırmak için; özellikler `RATING_FIELDS`'te (ör. rocket: cost, lift, reliability). 3 = o özellikten çok (cost 3 = pahalı, aim 3 = en hassas). `selection` verilirse güneş panellerinin gücü görevin güneş ışığına göre puanlanır |
 
 ```python
@@ -216,28 +219,43 @@ Takım modu 2026-11-14'te kaldırıldı, oyun sadece tek kişilik. `team_room.py
 ## 7. Sözleşme: `app.py`
 
 - Tek kişilik, sade ve çocuk dostu arayüz. Ekranda **sayı az**: kaynaklar renkli `st.progress`
-  çubukları (yeşil → sarı → kırmızı, `resource_gauges` seviyesine göre CSS ile) ve kısa cümleler;
-  parçalar 1-3 emoji puanla (`calc.part_ratings`). Tam sayılar, terimler ve hesap mesajları her zaman
-  `st.expander(LEARN_LABEL)` (`"📚 Why? (Learn more)"`) kutularında.
-- Akış (`STEPS`): 🎯 Mission → 🚀 Rocket → 🛠️ Spacecraft → 🛰️ Launch. `draw_game()`:
-  `draw_hud` (4 ana kaynak çubuğu + diğer kontroller ✅/❌ rozet + ekranın altına sabit çubuk),
-  `draw_stepper`, `draw_impact` (son değişiklik kelimelerle + toast), adım ekranı, `draw_advisor`
-  (sorun + basit çözüm), `draw_step_nav`.
-- Adımlar: `draw_mission_step`, `draw_rocket_step`, `draw_spacecraft_step` (`draw_instrument_bay`),
-  `draw_launch_step` (`draw_go_poll`, `draw_launch`, `animate_launch`, `draw_report`,
-  `draw_leaderboard_save`). Sürpriz kısıt `draw_twist(design, with_button=False)`.
+  çubukları (yeşil → sarı → kırmızı, `resource_gauges` seviyesine göre CSS ile) ve yüzde + kelime
+  gösteren `st.metric`; parçalar 1-3 emoji puanla (`calc.part_ratings`). Tam sayılar, terimler ve hesap
+  mesajları her zaman `st.expander(LEARN_LABEL)` (`"📚 Why? (Learn more)"`) kutularında.
+- Sayfalar (`st.session_state["page"]`, `PAGES` sözlüğü, `main()` her sayfayı
+  `st.container(key="page-<ad>")` içinde çizer → CSS ile yumuşak geçiş):
+  - `menu` → `draw_menu`: isim (`s_name_input` → `player_name`), zorluk (`s_menu_difficulty`),
+    `▶ START MISSION` (`_start_game`, isim boşsa uyarı), Leaderboard, Space School, Options düğmeleri.
+  - `game` → `draw_game_page`: `draw_topbar` + `st.columns` ile 3 kolon (`layout="wide"`).
+    - Tasarım aşaması (`phase` = `"design"`): sol `draw_workshop` (sekmeler `TABS`: 🎯 Mission /
+      🚀 Rocket / 🛠️ Parts; Parts içinde `PART_GROUPS`), orta `draw_dashboard` (`rocket_scene` SVG roket,
+      `gauge_card` ×4, metrikler, rozetler, `draw_advisor`, dev `🚀 LAUNCH` düğmesi = `_launch`), sağ
+      `draw_school_panel` (`current_focus` ile solda seçili hedef/parça hakkında Space School bilgisi:
+      `draw_mission_info`, `draw_part_info`, `CATEGORY_KID`).
+    - Uçuş aşaması (`phase` = `"flight"`): sol `draw_flight_panel` (`GAME_FEEL_WORDS` + düğmeler),
+      orta `draw_flight` (`flight_html` → `assets/flight.html`, `embed_html` ile iframe), sağ `draw_report`
+      (ilk gösterimde animasyon bitene kadar `REPORT_DELAY_S` sn gizli; `draw_leaderboard_save` ismi
+      menüden alır).
+  - `leaderboard` → `draw_leaderboard_page`, `school` → `draw_school_page`, `options` →
+    `draw_options_page` (ses aç/kapa, ses düzeyi, animasyon aç/kapa → `settings`; tasarım kodu yükle /
+    yeni tasarım).
+- Mini oyun (`assets/flight.html`): geri sayım → kalkış → Dünya'dan hedefe kıvrımlı yol (aşamalar ✅/❌)
+  → başarılıysa ok tuşları / WASD / dokunma ile uçuş: 💾 veri topla (anten Dünya'ya yollar → 🔬 puan),
+  ⚡ enerji topla, ☄️ asteroitten kaç. Ayarlar `calc.minigame_params`'tan gelir, JS sadece oyun fiziği
+  yapar. Bitişte oyuncunun adı ve skoru yazar (en iyi skor tarayıcıda `localStorage`). Sesler Web Audio
+  ile üretilir (dosya yok). Mini oyun skoru Python'a dönmez; skor tablosu tasarım puanını kaydeder.
 - Ortak: `design_widget(kind, label, key, options, design, format_func=str, **kwargs)` (kind: radio |
-  cards | pills | slider), `part_picker(label, key, design, intro="")`, `draw_part_card`,
-  `rating_items`, `part_tags`, `part_numbers` (sadece Öğren kutusunda), `apply_change(key, value)`.
-- Ekran metinleri sözlükleri: `CHECK_WORDS` (her kontrol için emoji, iyi/sorun cümlesi, çözüm),
-  `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`, `CATEGORY_LEARN`.
-- Sekmeler: `draw_learn_tab` (Space School), `draw_leaderboard_tab` (madalyalı liste),
-  `draw_share_tab`, `main()`. Tablo (`st.dataframe`) kullanılmaz.
-- `st.session_state`: `single_design` (selection), widget'lar `s_<key>`, cihaz kutuları `s_inst_<id>`,
-  adım `s_step`, son değişiklik `s_impact` / `s_toast`, `_seen` (senkron), `launch`, `_saved_launches`.
+  cards | pills | slider), `part_list`, `draw_part_card`, `rating_items`, `part_tags`, `part_icon`,
+  `part_numbers` (sadece Öğren kutusunda), `apply_change(key, value)`, `draw_twist`, `draw_impact` (toast).
+- Ekran metinleri sözlükleri: `CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `LEVEL_DELTA`, `RATING_WORDS`,
+  `DELTA_WORDS`, `GAME_FEEL_WORDS`, `CATEGORY_KID`, `CATEGORY_LEARN`. Tablo (`st.dataframe`) kullanılmaz.
+- `st.session_state`: `page`, `player_name`, `settings` (`sound`, `volume`, `animate`), `single_design`
+  (selection), `phase`, `launch`, `focus`, widget'lar `s_<key>`, cihaz kutuları `s_inst_<id>`, sekme `s_tab`,
+  parça grubu `s_group`, ayarlar `s_opt_<ad>`, `s_toast`, `_seen` (senkron), `_saved_launches`, `_revealed`.
 - Görünüm: `.streamlit/config.toml` (karanlık tema) + `app.py` sonundaki `CSS`. Çubuk renkleri
-  `st.container(key="gauge-<seviye>-<id>")` sınıfıyla verilir. HTML parçaları `show_html()`, kullanıcı
-  metni `esc()` ile.
+  `st.container(key="gauge-<seviye>-<id>")`; telefonda yan yana kalan ızgaralar `key="grid-..."`;
+  animasyonlar `fill-mode: backwards` (bitince `transform` kalmaz, alttaki sabit çubuk bozulmaz).
+  HTML parçaları `show_html()`, kullanıcı metni `esc()` ile.
 - Skor tablosu `leaderboard.json` dosyasında (GitHub'a gitmez, sunucu yeniden başlarsa sıfırlanır).
 
 ## 8. Kontrol komutları

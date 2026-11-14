@@ -93,6 +93,7 @@ HERKESE AÇIK FONKSİYONLAR (app.py bunları kullanır):
     change_impact(before, after)         -> IMPACT sözlüğü (bir değişikliğin bedeli)
     part_ratings(category, selection=None) -> {part_id: {özellik: 1|2|3}} (sayısız karşılaştırma;
                                             özellikler RATING_FIELDS'te)
+    minigame_params(selection)           -> MINIGAME sözlüğü (fırlatma sonrası uçuş mini oyunu)
 
 REQUIREMENTS sözlüğü:
     {"budget", "development_months", "radiation_level", "science_target",
@@ -156,6 +157,10 @@ GAUGE sözlüğü (resource_gauges):
 WARNING sözlüğü (design_warnings):
     {"id", "check" (CHECK_IDS veya None), "level" ("danger"/"warning"/"info"), "icon",
      "title", "message"}
+
+MINIGAME sözlüğü (minigame_params):
+    {"agility", "energy_drain", "lives", "data_storage", "downlink_rate", "packet_points",
+     "asteroid_rate", "seconds", "ratings": {"agility", "energy", "lives", "data"} (1-3)}
 
 IMPACT sözlüğü (change_impact):
     {"headline", "changed": [{"key", "label", "from", "to"}],
@@ -1645,6 +1650,66 @@ def change_impact(before, after):
 
 
 # ----------------------------------------------------------------
+# Fırlatma sonrası mini oyun (uzay aracını uçurma) ayarları
+# ----------------------------------------------------------------
+MINIGAME_SECONDS = 60          # bir uçuşun süresi
+MINIGAME_BASE_STORAGE = 5      # sıkıştırmasız bilgisayarın hafızasına sığan veri paketi
+
+
+def _clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def _feel_rating(value, low, high):
+    """Bir mini oyun ayarını 1-3 puana çevirir (ekranda emoji olarak gösterilir)."""
+    if value <= low:
+        return 1
+    return 3 if value >= high else 2
+
+
+def minigame_params(selection):
+    """Mini oyunun ayarları; tasarım oyunda hissedilsin diye özetten türetilir:
+      * agility        : ağır araç (kütle / roket kapasitesi yüksek) daha hantal döner (0.4 - 1.2)
+      * energy_drain   : güç payı azsa enerji saniyede daha çok azalır (yüzde / saniye)
+      * lives          : fazla radyasyon koruması ve yedek anten ek can verir (1 - 5)
+      * data_storage   : bilgisayarın sıkıştırması daha çok veri paketinin sığmasını sağlar
+      * downlink_rate  : anten + yer istasyonu saniyede kaç paketi Dünya'ya gönderir
+      * packet_points  : bilim puanı hedefin üstündeyse her paket daha değerli
+      * asteroid_rate  : zorluğun olay çarpanına göre asteroit sıklığı
+      * seconds        : uçuş süresi
+      * ratings        : {"agility", "energy", "lives", "data"} → 1-3 (sayısız gösterim için)"""
+    selection = normalize_selection(selection)
+    s = evaluate_mission(selection)["summary"]
+    mass_ratio = s["mass"] / s["capacity"] if s["capacity"] > 0 else 1.0
+    power_ratio = s["power_produced"] / s["power_consumed"] if s["power_consumed"] > 0 else 2.0
+    data_ratio = s["data_downlink"] / s["data_generated"] if s["data_generated"] > 0 else 2.0
+    science_ratio = s["science_points"] / s["science_target"] if s["science_target"] > 0 else 1.0
+    rad_extra = max(0, s["radiation_provided"] - s["radiation_required"])
+    backup = 1 if _comms(selection)["has_backup"] else 0
+    agility = round(_clamp(1.3 - 0.8 * mass_ratio, 0.4, 1.2), 2)
+    energy_drain = round(_clamp(3.0 / max(power_ratio, 0.25), 1.2, 9.0), 2)
+    lives = int(_clamp(3 + rad_extra + backup, 1, 5))
+    storage = int(round(MINIGAME_BASE_STORAGE / _computer(selection)["data_compression"]))
+    downlink_rate = round(_clamp(0.45 * data_ratio, 0.15, 1.2), 2)
+    return {
+        "agility": agility,
+        "energy_drain": energy_drain,
+        "lives": lives,
+        "data_storage": storage,
+        "downlink_rate": downlink_rate,
+        "packet_points": int(_clamp(round(10 * science_ratio), 5, 25)),
+        "asteroid_rate": round(0.7 + 0.35 * _difficulty(selection)["event_multiplier"], 2),
+        "seconds": MINIGAME_SECONDS,
+        "ratings": {
+            "agility": _feel_rating(agility, 0.6, 1.0),
+            "energy": _feel_rating(-energy_drain, -4.0, -2.0),
+            "lives": _feel_rating(lives, 3, 5),
+            "data": _feel_rating(downlink_rate, 0.3, 0.7),
+        },
+    }
+
+
+# ----------------------------------------------------------------
 # Hızlı test:  python calculations.py
 # ----------------------------------------------------------------
 if __name__ == "__main__":
@@ -1678,6 +1743,10 @@ if __name__ == "__main__":
         evaluate_mission({**example, "difficulty": difficulty_id})
     for category in PART_TABLES:
         assert part_options(category, "easy"), f"easy mode needs at least one {category}"
+    game = minigame_params(example)
+    assert 1 <= game["lives"] <= 5 and game["data_storage"] >= 1 and game["seconds"] > 0
+    assert set(game["ratings"]) == {"agility", "energy", "lives", "data"}
+    print("Mini game:", {k: v for k, v in game.items() if k != "ratings"})
 
     print(f"Score: {r['score']}  Grade: {r['grade']}  Success: {r['success']}  "
           f"Breakdown: {r['score_breakdown']}")

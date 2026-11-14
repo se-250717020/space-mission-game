@@ -5,8 +5,10 @@ roket, enerji sistemi, batarya, uçuş bilgisayarı, yönelim kontrolü, radyasy
 yer istasyonu ve bilimsel cihazlarla uzay aracını tasarla. Bütçe, takvim, kütle, güç, veri ve
 görev ömrü kısıtlarını dengele, fırlat, yolda uzay olaylarına dayan; sonunda nedenleriyle
 açıklanan mühendislik karneni, görev sonrası analizini ve sana en çok benzeyen gerçek NASA
-görevini gör. Tek kişiliktir ve ilkokul öğrencisinin bile anlayacağı kadar sade: sayılar yerine
-renkli çubuklar ve emoji puanlar; teknik ayrıntılar "📚 Why? (Learn more)" kutularında.
+görevini gör. Görev başarılıysa uzay aracını **mini oyunda kendin uçur**: ağır araç hantal döner,
+güç payı azsa enerji çabuk biter, iyi anten veriyi hızlı yollar. Tek kişiliktir ve ilkokul
+öğrencisinin bile anlayacağı kadar sade: sayılar yerine renkli çubuklar ve emoji puanlar; teknik
+ayrıntılar "📚 Why? (Learn more)" kutularında.
 
 - **GitHub:** https://github.com/se-250717020/space-mission-game
 - **Canlı oyun (Streamlit):** https://space-mission-game.streamlit.app/
@@ -19,7 +21,8 @@ renkli çubuklar ve emoji puanlar; teknik ayrıntılar "📚 Why? (Learn more)" 
 |---|---|
 | `data.py` | Görev, bilimsel hedef, yörünge, roket, enerji, batarya, bilgisayar, yönelim, kalkan, cihaz, anten, yer istasyonu, uzay olayı, sürpriz kısıt, zorluk, sözlük, ders, takım rolü ve gerçek NASA görevi sözlükleri (sadece veri) |
 | `calculations.py` | Saf Python hesap fonksiyonları, puanlama, fırlatma simülasyonu, analiz, tasarım kodu, skor tablosu (Streamlit yok) |
-| `app.py`, `assets/`, `.streamlit/config.toml` | Streamlit arayüzü (karanlık uzay teması, tek kişilik, çocuk dostu): 4 adımlı akış, renkli kaynak çubukları, emoji parça puanları, basit mühendis ipuçları, geri sayım ve rapor; Space School, Leaderboard, Share sekmeleri |
+| `app.py`, `.streamlit/config.toml` | Streamlit arayüzü (karanlık uzay teması, tek kişilik, çocuk dostu): ana menü (isim, zorluk, Leaderboard, Space School, Options), 3 kolonlu oyun ekranı (sol atölye, orta gösterge paneli + LAUNCH, sağ Space School bilgileri), rapor |
+| `assets/flight.html` | Fırlatma animasyonu + uzay aracı uçurma mini oyunu (saf JavaScript Canvas, sesler Web Audio ile üretilir) |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil
@@ -62,8 +65,12 @@ Rastgele uzay olayları (zorluğa göre ihtimal):
 - **Solar Storm / Cosmic Ray Burst:** koruma seviyesi görevin istediğinden *yüksekse* zarar vermez.
 - **Micrometeoroid Strike:** antende *yedek* varsa zarar vermez.
 
-**Diğer:** Space School sekmesi (sözlük, kontrol dersleri, gerçek NASA görevleri), skor tablosu, tasarım
-kodu (`SMG1-...`) ile kaydet / paylaş / iki tasarımı karşılaştır, karneyi Markdown indir.
+**Mini oyun (görev başarılıysa):** ok tuşları / WASD / dokunarak uç; 💾 veri topla (anten Dünya'ya
+yollar, 🔬 puan olur), ⚡ enerji topla, ☄️ asteroitlerden kaç. Kütle çevikliği, güç payı enerjiyi,
+fazla kalkan + yedek anten canı, anten + yer istasyonu gönderim hızını, bilgisayar hafızayı belirler.
+
+**Diğer:** Space School sayfası (sözlük, kontrol dersleri, gerçek NASA görevleri), skor tablosu,
+Options (ses, animasyon, tasarım kodu `SMG1-...` ile kaydet / paylaş), karneyi Markdown indir.
 
 ---
 

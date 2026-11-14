@@ -1,0 +1,486 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  flight.html — Fırlatma animasyonu + uzay aracı uçurma mini oyunu (saf Vanilla JS, harici kütüphane yok).
+  app.py bu dosyayı okur, __CONFIG__ yerine JSON ayarlarını koyar ve st.components.v1.html ile gömer.
+  Akış: geri sayım → kalkış → Dünya'dan hedefe yolculuk → (başarılıysa) mini oyun.
+  Sesler dosya değil: Web Audio API ile anında üretilir (telif sorunu yok, internet gerekmez).
+  Ekrandaki tüm yazılar İngilizce (sözleşme), yorumlar Türkçe.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #wrap { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid rgba(110,150,255,.28);
+          background: #03060d; box-shadow: 0 10px 34px rgba(0,0,0,.5); }
+  canvas { display: block; width: 100%; height: 440px; touch-action: none; outline: none; cursor: crosshair; }
+  #mute { position: absolute; bottom: 10px; right: 10px; z-index: 2; border: 1px solid rgba(110,150,255,.35);
+          background: rgba(5,8,18,.8); color: #e8ecf4; border-radius: 10px; font-size: 16px; padding: 4px 8px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" tabindex="0"></canvas><button id="mute" title="Sound on / off">🔊</button></div>
+<script>
+const CFG = __CONFIG__;
+const G = CFG.game;
+
+// ---------------------------------------------------------------- SES (Web Audio, dosyasız)
+let actx = null, master = null, muted = !CFG.sound;
+const muteBtn = document.getElementById('mute');
+muteBtn.textContent = muted ? '🔇' : '🔊';
+function audio() {
+  if (muted) return null;
+  try {
+    if (!actx) {
+      // Üst sayfanın AudioContext'i: kullanıcı LAUNCH'a bastığı için ses izni orada var
+      let AC = null;
+      try { AC = window.parent.AudioContext || window.parent.webkitAudioContext; } catch (e) { AC = null; }
+      AC = AC || window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+      master = actx.createGain();
+      master.gain.value = Math.max(0, Math.min(1, CFG.volume / 100));
+      master.connect(actx.destination);
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  } catch (e) { return null; }
+}
+function tone(f, d, type, v, f2, at) {
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + (at || 0);
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(v || 0.2, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + d + 0.05);
+}
+function noise(d, v, fFrom, fTo, at) {
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + (at || 0);
+  const len = Math.floor(a.sampleRate * d);
+  const buf = a.createBuffer(1, len, a.sampleRate);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+  const src = a.createBufferSource(); src.buffer = buf;
+  const flt = a.createBiquadFilter(); flt.type = 'lowpass';
+  flt.frequency.setValueAtTime(fFrom, t); flt.frequency.exponentialRampToValueAtTime(fTo, t + d);
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(v, t + Math.min(0.35, d / 3));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  src.connect(flt); flt.connect(g); g.connect(master); src.start(t); src.stop(t + d);
+}
+const SFX = {
+  beep:    () => tone(660, 0.2, 'square', 0.12),
+  go:      () => tone(990, 0.6, 'square', 0.14),
+  engine:  () => { noise(3.4, 0.55, 250, 1400); tone(48, 3.0, 'sawtooth', 0.1, 95); },
+  whoosh:  () => noise(1.4, 0.25, 2400, 300),
+  boom:    () => { noise(1.6, 0.7, 1400, 50); tone(110, 0.9, 'sine', 0.45, 28); },
+  win:     () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.28, 'triangle', 0.2, null, i * 0.12)),
+  collect: () => { tone(880, 0.08, 'square', 0.1); tone(1320, 0.14, 'square', 0.1, null, 0.07); },
+  sent:    () => tone(1500, 0.07, 'sine', 0.07),
+  energy:  () => tone(420, 0.3, 'triangle', 0.18, 900),
+  hit:     () => { noise(0.45, 0.5, 900, 80); tone(170, 0.35, 'square', 0.18, 50); },
+  full:    () => tone(200, 0.16, 'square', 0.09),
+  over:    () => [784, 659, 523, 392].forEach((f, i) => tone(f, 0.32, 'triangle', 0.18, null, i * 0.16)),
+};
+muteBtn.addEventListener('click', (e) => {
+  e.stopPropagation(); muted = !muted; muteBtn.textContent = muted ? '🔇' : '🔊';
+  if (!muted) { audio(); SFX.collect(); }
+  C.focus();
+});
+
+// ---------------------------------------------------------------- ÇİZİM YARDIMCILARI
+const C = document.getElementById('c');
+const X = C.getContext('2d');
+let W = 640, H = 440;
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+function resize() {
+  W = C.clientWidth || 640; H = C.clientHeight || 440;
+  C.width = Math.round(W * DPR); C.height = Math.round(H * DPR);
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize); resize();
+
+const FONT = 'Nunito, "Segoe UI Emoji", "Apple Color Emoji", system-ui, sans-serif';
+function txt(s, x, y, size, color, align, family, weight) {
+  X.font = `${weight || 800} ${size}px ${family || FONT}`;
+  const room = W - 24, width = X.measureText(s).width;   // dar ekranda yazı sığsın diye küçült
+  if (width > room && (align || 'center') === 'center') {
+    X.font = `${weight || 800} ${Math.max(9, Math.floor(size * room / width))}px ${family || FONT}`;
+  }
+  X.textAlign = align || 'center'; X.textBaseline = 'middle';
+  X.fillStyle = color || '#e8ecf4'; X.fillText(s, x, y);
+}
+function title(s, x, y, size, color) {
+  X.save(); X.shadowColor = color || '#fc3d21'; X.shadowBlur = 24;
+  txt(s, x, y, size, '#ffffff', 'center', 'Orbitron, ' + FONT, 900); X.restore();
+}
+const big = () => Math.max(26, Math.min(64, W / 9));
+const stars = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2 }));
+function sky(scroll) {
+  const g = X.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0b1533'); g.addColorStop(0.6, '#050915'); g.addColorStop(1, '#02040a');
+  X.fillStyle = g; X.fillRect(0, 0, W, H);
+  for (const s of stars) {
+    if (scroll) { s.x -= scroll * s.z * 0.00035; if (s.x < 0) { s.x += 1; s.y = Math.random(); } }
+    X.globalAlpha = 0.35 + s.z * 0.65; X.fillStyle = '#fff';
+    X.fillRect(s.x * W, s.y * H, s.z * 1.8, s.z * 1.8);
+  }
+  X.globalAlpha = 1;
+}
+function rocket(cx, by, s, flame) {         // by = roketin alt orta noktası
+  X.save(); X.translate(cx, by); X.scale(s, s);
+  if (flame) {
+    const f = 26 + Math.random() * 22;
+    const fg = X.createLinearGradient(0, 0, 0, f);
+    fg.addColorStop(0, '#fff6c2'); fg.addColorStop(0.4, '#ffb347'); fg.addColorStop(1, 'rgba(252,61,33,0)');
+    X.fillStyle = fg; X.beginPath(); X.moveTo(-11, 0); X.quadraticCurveTo(0, f * 1.6, 11, 0); X.fill();
+  }
+  X.fillStyle = '#fc3d21';
+  X.beginPath(); X.moveTo(-14, -18); X.lineTo(-28, 4); X.lineTo(-14, 0); X.fill();
+  X.beginPath(); X.moveTo(14, -18); X.lineTo(28, 4); X.lineTo(14, 0); X.fill();
+  const bg = X.createLinearGradient(-14, 0, 14, 0);
+  bg.addColorStop(0, '#aeb9cf'); bg.addColorStop(0.5, '#ffffff'); bg.addColorStop(1, '#8a97b1');
+  X.fillStyle = bg; X.fillRect(-14, -110, 28, 110);
+  X.fillStyle = '#fc3d21'; X.fillRect(-14, -40, 28, 6);
+  X.beginPath(); X.moveTo(-14, -110); X.quadraticCurveTo(0, -150, 14, -110); X.fill();
+  X.fillStyle = '#4fd1ff'; X.strokeStyle = '#0b1430'; X.lineWidth = 3;
+  X.beginPath(); X.arc(0, -78, 7, 0, Math.PI * 2); X.fill(); X.stroke();
+  X.restore();
+}
+function ship(x, y, tilt, thrust, blink) {    // oyundaki uzay aracı (sağa bakar)
+  if (blink) return;
+  X.save(); X.translate(x, y); X.rotate(tilt);
+  if (thrust) {
+    X.fillStyle = `rgba(255,${150 + Math.random() * 80 | 0},60,.9)`;
+    X.beginPath(); X.moveTo(-16, -6); X.lineTo(-30 - Math.random() * 14, 0); X.lineTo(-16, 6); X.fill();
+  }
+  X.fillStyle = '#2b5cff'; X.strokeStyle = '#9ec5ff'; X.lineWidth = 1;
+  X.fillRect(-8, -26, 12, 14); X.strokeRect(-8, -26, 12, 14);
+  X.fillRect(-8, 12, 12, 14); X.strokeRect(-8, 12, 12, 14);
+  const bg = X.createLinearGradient(0, -10, 0, 10);
+  bg.addColorStop(0, '#ffffff'); bg.addColorStop(1, '#9aa7bf');
+  X.fillStyle = bg; X.beginPath();
+  X.moveTo(20, 0); X.lineTo(4, -11); X.lineTo(-16, -9); X.lineTo(-16, 9); X.lineTo(4, 11); X.closePath(); X.fill();
+  X.fillStyle = '#fc3d21'; X.fillRect(-16, -9, 5, 18);
+  X.fillStyle = '#4fd1ff'; X.beginPath(); X.arc(5, 0, 4, 0, Math.PI * 2); X.fill();
+  X.restore();
+}
+let parts = [];
+function burst(x, y, n, colors, speed) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = (0.3 + Math.random()) * (speed || 220);
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.9,
+                 c: colors[i % colors.length], r: 2 + Math.random() * 3 });
+  }
+}
+function drawParts(dt) {
+  for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98; p.vy *= 0.98; p.life -= dt; }
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts) { X.globalAlpha = Math.min(1, p.life); X.fillStyle = p.c; X.beginPath(); X.arc(p.x, p.y, p.r, 0, Math.PI * 2); X.fill(); }
+  X.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------- SAHNE DURUMU
+const T = { countdown: 3, liftoff: 2.6, cruise: 5, arrived: 1.8 };
+let mode = '', mt = 0, shake = 0, lastBeep = -1;
+const failIndex = CFG.stages.findIndex(s => !s.ok);
+const N = Math.max(1, CFG.stages.length);
+const stopAt = CFG.success ? 1 : (failIndex >= 0 ? (failIndex + 0.55) / N : 0.92);
+function setMode(m) {
+  mode = m; mt = 0;
+  if (m === 'liftoff') { SFX.go(); SFX.engine(); }
+  if (m === 'cruise') SFX.whoosh();
+  if (m === 'arrived') SFX.win();
+  if (m === 'failed' && CFG.animate) { const p = pathPoint(stopAt); burst(p.x, p.y, 70, ['#ffb347', '#fc3d21', '#fff6c2', '#9aa7bf'], 260); SFX.boom(); shake = 0.6; }
+  if (m === 'play') newGame();
+}
+function pathPoint(p) {     // Dünya'dan hedefe kıvrımlı yol (taslaktaki gibi)
+  const x0 = W * 0.13, y0 = H * 0.74, x1 = W * 0.85, y1 = H * 0.34;
+  const x = x0 + (x1 - x0) * p;
+  const wobble = Math.sin(p * Math.PI * 3) * H * 0.12 * Math.sin(p * Math.PI);
+  const y = y0 + (y1 - y0) * p - Math.sin(p * Math.PI) * H * 0.12 + wobble;
+  return { x, y };
+}
+
+function drawCountdown() {
+  sky(0);
+  X.fillStyle = '#0d1428'; X.fillRect(0, H - 46, W, 46);
+  X.fillStyle = '#2a3a5e'; X.fillRect(W / 2 - 70, H - 52, 140, 8);
+  X.strokeStyle = '#3a4d78'; X.lineWidth = 3;
+  X.beginPath(); X.moveTo(W / 2 + 46, H - 52); X.lineTo(W / 2 + 46, H - 230); X.stroke();
+  for (let y = H - 70; y > H - 230; y -= 26) { X.beginPath(); X.moveTo(W / 2 + 34, y); X.lineTo(W / 2 + 46, y - 13); X.stroke(); }
+  rocket(W / 2, H - 52, 1.1, false);
+  txt(`${CFG.rocket} → ${CFG.target_emoji} ${CFG.target}`, W / 2, 34, 15, '#9fdcff');
+  const n = Math.ceil(T.countdown - mt);
+  if (n !== lastBeep && n > 0) { lastBeep = n; SFX.beep(); }
+  title(String(Math.max(n, 1)), W / 2, H * 0.36, big() * 1.6);
+}
+let smoke = [];
+function drawLiftoff(dt) {
+  const k = mt / T.liftoff;
+  const sx = (Math.random() - 0.5) * 8 * (1 - k), sy = (Math.random() - 0.5) * 6 * (1 - k);
+  X.save(); X.translate(sx, sy);
+  sky(k * 900);
+  const ground = H - 46 + k * k * 400;
+  X.fillStyle = '#0d1428'; X.fillRect(0, ground, W, 60);
+  const by = H - 52 - k * k * (H + 220);
+  smoke.push({ x: W / 2 + (Math.random() - 0.5) * 30, y: Math.min(by + 30, ground), r: 10, life: 1.2 });
+  for (const s of smoke) { s.r += 50 * dt; s.life -= dt; s.x += (Math.random() - 0.5) * 40 * dt; }
+  smoke = smoke.filter(s => s.life > 0);
+  for (const s of smoke) { X.globalAlpha = s.life * 0.35; X.fillStyle = '#cfd8e8'; X.beginPath(); X.arc(s.x, s.y, s.r, 0, Math.PI * 2); X.fill(); }
+  X.globalAlpha = 1;
+  rocket(W / 2, by, 1.1, true);
+  X.restore();
+  title('LIFTOFF! 🚀', W / 2, H * 0.22, big());
+}
+function drawRoute(prog) {
+  sky(40);
+  const a = pathPoint(0), b = pathPoint(1);
+  txt('🌍', a.x, a.y, Math.min(70, W / 8));
+  txt(CFG.target_emoji, b.x, b.y, Math.min(84, W / 7));
+  X.setLineDash([5, 8]); X.strokeStyle = 'rgba(79,209,255,.45)'; X.lineWidth = 2; X.beginPath();
+  for (let i = 0; i <= 80; i++) { const p = pathPoint(i / 80); i ? X.lineTo(p.x, p.y) : X.moveTo(p.x, p.y); }
+  X.stroke(); X.setLineDash([]);
+  X.strokeStyle = '#fc3d21'; X.lineWidth = 3; X.beginPath();
+  for (let i = 0; i <= 80 * prog; i++) { const p = pathPoint(i / 80); i ? X.lineTo(p.x, p.y) : X.moveTo(p.x, p.y); }
+  X.stroke();
+  // aşamalar (sol üst), olaylar altında
+  const fs = W < 420 ? 12 : 14;
+  CFG.stages.forEach((s, i) => {
+    const shown = prog >= Math.min((i + 1) / N, stopAt) - 1e-6 && (CFG.success || i <= failIndex || failIndex < 0);
+    if (!shown) return;
+    const bad = !s.ok;
+    txt(`${bad ? '❌' : '✅'} ${s.name}`, 14, 22 + i * (fs + 8), fs, bad ? '#ffb3ba' : '#bff5e6', 'left');
+  });
+  if (prog > 0.45) CFG.events.forEach((e, i) => {
+    txt(`☄️ ${e.name}: ${e.ok ? 'survived ✅' : 'damage ❌'}`, W - 14, 22 + i * (fs + 8), fs, e.ok ? '#ffe3a3' : '#ffb3ba', 'right');
+  });
+}
+function drawCruise() {
+  const prog = Math.min(mt / T.cruise, stopAt);
+  drawRoute(prog);
+  const p = pathPoint(prog), q = pathPoint(Math.min(1, prog + 0.01));
+  ship(p.x, p.y, Math.atan2(q.y - p.y, q.x - p.x), true, false);
+  if (prog >= stopAt && mt >= T.cruise * stopAt) setMode(CFG.success ? 'arrived' : 'failed');
+}
+function drawArrived(dt) {
+  drawRoute(1);
+  const b = pathPoint(1);
+  if (Math.random() < 0.3) burst(b.x, b.y, 4, ['#4fe3b5', '#4fd1ff', '#fff'], 160);
+  drawParts(dt);
+  title('ARRIVED! 🎉', W / 2, H * 0.5, big());
+  txt(`Welcome to ${CFG.target}, ${CFG.name}!`, W / 2, H * 0.5 + big() * 0.9, 17, '#d6fff2');
+  if (mt > T.arrived) setMode('ready');
+}
+function drawFailed(dt) {
+  drawRoute(CFG.animate ? stopAt : 0);
+  drawParts(dt);
+  title('💥 OH NO!', W / 2, H * 0.48, big(), '#ff4d5e');
+  const f = failIndex >= 0 ? CFG.stages[failIndex].name : 'The mission';
+  txt(`${f} went wrong.`, W / 2, H * 0.48 + big() * 0.85, 17, '#ffd0d4');
+  txt('Fix your spacecraft in the workshop and try again 🔧', W / 2, H * 0.48 + big() * 0.85 + 26, 14, '#c6cfdf');
+}
+
+// ---------------------------------------------------------------- MİNİ OYUN
+const keys = {};
+const pointer = { on: false, x: 0, y: 0 };
+let S = null;
+let best = 0;
+try { best = Number(localStorage.getItem('smg_best_flight') || 0); } catch (e) { best = 0; }
+function newGame() {
+  S = { x: W * 0.2, y: H / 2, vx: 0, vy: 0, energy: 100, lives: G.lives, tank: 0, acc: 0, score: 0, sent: 0,
+        t: 0, inv: 1.2, rocks: [], items: [], floats: [], spawnR: 1.0, spawnD: 0.6, spawnE: 5, thrust: false,
+        reason: '', beam: 0, newBest: false };
+  parts = [];
+}
+function floatText(s, x, y, c) { S.floats.push({ s, x, y, c, life: 1 }); }
+function spawnRock(ramp) {
+  const r = 13 + Math.random() * 22, n = 9, pts = [];
+  for (let i = 0; i < n; i++) pts.push(0.7 + Math.random() * 0.35);
+  S.rocks.push({ x: W + r, y: 60 + Math.random() * (H - 80), r, pts, rot: 0, vr: (Math.random() - 0.5) * 3,
+                 vx: -(140 + Math.random() * 130) * Math.sqrt(ramp), vy: (Math.random() - 0.5) * 40 });
+}
+function spawnItem(kind) {
+  S.items.push({ kind, x: W + 20, y: 64 + Math.random() * (H - 96), vx: -(120 + Math.random() * 70), bob: Math.random() * 6 });
+}
+function endGame(reason) {
+  S.reason = reason;
+  if (S.score > best) { best = S.score; S.newBest = true; try { localStorage.setItem('smg_best_flight', String(best)); } catch (e) {} }
+  S.score >= 1 && reason.startsWith('🏁') ? SFX.win() : SFX.over();
+  setMode('end');
+}
+function update(dt) {
+  S.t += dt;
+  let ax = 0, ay = 0;
+  if (keys.left) ax -= 1; if (keys.right) ax += 1; if (keys.up) ay -= 1; if (keys.down) ay += 1;
+  if (pointer.on) { const dx = pointer.x - S.x, dy = pointer.y - S.y, d = Math.hypot(dx, dy); if (d > 14) { ax = dx / d; ay = dy / d; } }
+  const n = Math.hypot(ax, ay); if (n > 0) { ax /= n; ay /= n; }
+  S.thrust = n > 0 && S.energy > 0;
+  // Ağır araç = az ivme + az sürtünme → hantal (G.agility, Python'dan)
+  const accel = 1150 * G.agility, drag = 1.1 + 2.1 * G.agility;
+  if (S.thrust) { S.vx += ax * accel * dt; S.vy += ay * accel * dt; }
+  S.vx -= S.vx * drag * dt; S.vy -= S.vy * drag * dt;
+  S.x += S.vx * dt; S.y += S.vy * dt;
+  if (S.x < 22) { S.x = 22; S.vx = 0; } if (S.x > W - 22) { S.x = W - 22; S.vx = 0; }
+  if (S.y < 62) { S.y = 62; S.vy = 0; } if (S.y > H - 22) { S.y = H - 22; S.vy = 0; }
+  // Güç payı az → enerji hızlı biter (G.energy_drain, saniyede yüzde)
+  S.energy -= G.energy_drain * dt * (S.thrust ? 1.6 : 1.0);
+  if (S.energy <= 0) { S.energy = 0; return endGame('🔌 Out of power!'); }
+  const ramp = 1 + S.t / 45;
+  S.spawnR -= dt; if (S.spawnR <= 0) { S.spawnR = (0.6 + Math.random() * 0.8) / (0.8 * G.asteroid_rate * ramp); spawnRock(ramp); }
+  S.spawnD -= dt; if (S.spawnD <= 0) { S.spawnD = 0.8 + Math.random() * 0.7; spawnItem('data'); }
+  S.spawnE -= dt; if (S.spawnE <= 0) { S.spawnE = 4.5 + Math.random() * 2.5; spawnItem('energy'); }
+  S.inv = Math.max(0, S.inv - dt);
+  for (const r of S.rocks) {
+    r.x += r.vx * dt; r.y += r.vy * dt; r.rot += r.vr * dt;
+    if (!r.dead && S.inv <= 0 && Math.hypot(r.x - S.x, r.y - S.y) < r.r + 11) {
+      r.dead = true; S.lives -= 1; S.inv = 1.6; shake = 0.35; SFX.hit();
+      burst(S.x, S.y, 26, ['#ffb347', '#9aa7bf', '#fc3d21'], 200);
+      floatText('-1 ❤️', S.x, S.y - 26, '#ffb3ba');
+      if (S.lives <= 0) return endGame('💥 Your spacecraft broke!');
+    }
+  }
+  S.rocks = S.rocks.filter(r => r.x > -60 && !r.dead);
+  for (const it of S.items) {
+    it.x += it.vx * dt; it.bob += dt * 4;
+    if (!it.got && Math.hypot(it.x - S.x, it.y - S.y) < 26) {
+      it.got = true;
+      if (it.kind === 'energy') { S.energy = Math.min(100, S.energy + 30); SFX.energy(); floatText('+⚡', it.x, it.y, '#ffe066'); }
+      else if (S.tank < G.data_storage) { S.tank += 1; SFX.collect(); floatText('💾', it.x, it.y, '#9fdcff'); }
+      else { SFX.full(); floatText('MEMORY FULL!', it.x, it.y, '#ffb3ba'); }
+    }
+  }
+  S.items = S.items.filter(it => it.x > -40 && !it.got);
+  // Anten veriyi Dünya'ya yollar (G.downlink_rate paket / saniye)
+  if (S.tank > 0) {
+    S.acc += G.downlink_rate * dt;
+    while (S.acc >= 1 && S.tank > 0) {
+      S.acc -= 1; S.tank -= 1; S.sent += 1; S.score += G.packet_points; S.beam = 0.3; SFX.sent();
+      floatText('+' + G.packet_points + ' 🔬', 40, H - 52, '#bff5e6');
+    }
+  } else { S.acc = Math.min(1, S.acc + G.downlink_rate * dt); }
+  S.beam = Math.max(0, S.beam - dt);
+  if (S.t >= G.seconds) {
+    if (S.tank > 0) { S.score += S.tank * G.packet_points; S.sent += S.tank; S.tank = 0; }
+    return endGame('🏁 Mission complete!');
+  }
+}
+function bar(x, y, w, h, frac, c) {
+  X.fillStyle = 'rgba(255,255,255,.12)'; X.fillRect(x, y, w, h);
+  X.fillStyle = c; X.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
+}
+function drawGame(dt) {
+  sky(S ? 260 : 0);
+  txt(CFG.target_emoji, W - 60, H - 70, 110);
+  txt('🌍', 28, H - 26, 30);
+  if (S.beam > 0) {
+    X.strokeStyle = `rgba(79,209,255,${S.beam * 3})`; X.lineWidth = 2; X.setLineDash([4, 6]);
+    X.beginPath(); X.moveTo(S.x, S.y); X.lineTo(28, H - 26); X.stroke(); X.setLineDash([]);
+  }
+  for (const it of S.items) txt(it.kind === 'energy' ? '⚡' : '💾', it.x, it.y + Math.sin(it.bob) * 4, 24);
+  for (const r of S.rocks) {
+    X.save(); X.translate(r.x, r.y); X.rotate(r.rot); X.beginPath();
+    r.pts.forEach((k, i) => { const a = i / r.pts.length * Math.PI * 2; const px = Math.cos(a) * r.r * k, py = Math.sin(a) * r.r * k; i ? X.lineTo(px, py) : X.moveTo(px, py); });
+    X.closePath(); X.fillStyle = '#6b6f7d'; X.fill(); X.strokeStyle = '#a3a8b8'; X.lineWidth = 2; X.stroke();
+    X.fillStyle = '#4e525e'; X.beginPath(); X.arc(r.r * 0.2, -r.r * 0.15, r.r * 0.22, 0, Math.PI * 2); X.fill();
+    X.restore();
+  }
+  const tilt = Math.max(-0.5, Math.min(0.5, S.vy / 500));
+  ship(S.x, S.y, tilt, S.thrust, S.inv > 0 && Math.floor(S.inv * 10) % 2 === 0);
+  drawParts(dt);
+  for (const f of S.floats) { f.y -= 30 * dt; f.life -= dt; X.globalAlpha = Math.max(0, f.life); txt(f.s, f.x, f.y, 15, f.c); }
+  X.globalAlpha = 1; S.floats = S.floats.filter(f => f.life > 0);
+  // Üst gösterge
+  X.fillStyle = 'rgba(3,6,13,.82)'; X.fillRect(0, 0, W, 46);
+  const small = W < 460, fs = small ? 13 : 15, bw = small ? 46 : 80;
+  let x = 10;
+  txt('❤️'.repeat(Math.max(0, S.lives)) || '💔', x, 23, small ? 12 : 15, '#fff', 'left'); x += (small ? 15 : 19) * Math.max(1, G.lives) + 8;
+  txt('⚡', x, 23, fs, '#fff', 'left'); bar(x + 20, 18, bw, 10, S.energy / 100, S.energy > 30 ? '#ffe066' : '#ff4d5e'); x += bw + 30;
+  txt('💾', x, 23, fs, '#fff', 'left');
+  for (let i = 0; i < G.data_storage; i++) {
+    X.fillStyle = i < S.tank ? (S.tank >= G.data_storage ? '#ff8a3d' : '#4fd1ff') : 'rgba(255,255,255,.14)';
+    X.fillRect(x + 22 + i * (small ? 7 : 10), 17, small ? 5 : 8, 12);
+  }
+  txt(`⏱️ ${Math.max(0, Math.ceil(G.seconds - S.t))}`, W - 10, 23, fs, '#fff', 'right');
+  txt(`🔬 ${S.score}`, W - (small ? 62 : 80), 23, fs, '#bff5e6', 'right');
+}
+function drawReady() {
+  sky(60);
+  title(`🎮 FLY IT, ${CFG.name.toUpperCase()}!`, W / 2, H * 0.2, Math.max(18, Math.min(40, W / 16)), '#4fd1ff');
+  const fs = W < 420 ? 13 : 16, lh = fs + 12;
+  const lines = [
+    '⬅️ ⬆️ ➡️ ⬇️  or  W A S D  to fly  (or touch and drag)',
+    '💾 Grab data: your antenna sends it home as 🔬 points',
+    '⚡ Grab energy · ☄️ Dodge the asteroids!',
+    `⏱️ ${G.seconds} seconds of flight`,
+  ];
+  lines.forEach((l, i) => txt(l, W / 2, H * 0.38 + i * lh, fs, '#d3dae8'));
+  if (Math.floor(mt * 2) % 2 === 0) title('CLICK / TAP OR PRESS SPACE TO START', W / 2, H * 0.82, Math.max(12, Math.min(20, W / 30)));
+}
+function drawEnd() {
+  sky(40);
+  txt(S.reason, W / 2, H * 0.17, Math.max(16, Math.min(26, W / 20)), '#ffd98a');
+  title(CFG.name, W / 2, H * 0.32, Math.max(20, Math.min(46, W / 13)), '#4fd1ff');
+  txt('🔬 SCIENCE SENT HOME', W / 2, H * 0.46, W < 420 ? 13 : 16, '#9fdcff');
+  title(String(S.score), W / 2, H * 0.58, big() * 1.15, '#22d3a6');
+  txt(S.newBest ? '🏆 NEW BEST!' : `🏆 Your best: ${best}`, W / 2, H * 0.7, 16, '#ffd98a');
+  txt(`💾 ${S.sent} data packets · ⏱️ ${Math.min(G.seconds, Math.round(S.t))} s`, W / 2, H * 0.78, 14, '#c6cfdf');
+  if (mt > 1 && Math.floor(mt * 2) % 2 === 0) title('CLICK / TAP OR SPACE TO FLY AGAIN', W / 2, H * 0.9, Math.max(11, Math.min(18, W / 34)));
+}
+
+// ---------------------------------------------------------------- GİRDİ
+const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
+                 ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down' };
+function startIfReady() {
+  audio();
+  if (mode === 'ready' || (mode === 'end' && mt > 1)) setMode('play');
+}
+window.addEventListener('keydown', (e) => {
+  if (KEYMAP[e.key]) { keys[KEYMAP[e.key]] = true; e.preventDefault(); }
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); startIfReady(); }
+});
+window.addEventListener('keyup', (e) => { if (KEYMAP[e.key]) keys[KEYMAP[e.key]] = false; });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; pointer.on = false; });
+function pos(e) { const r = C.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+C.addEventListener('pointerdown', (e) => {
+  C.focus(); audio();
+  if (mode === 'play') { const p = pos(e); pointer.on = true; pointer.x = p.x; pointer.y = p.y; C.setPointerCapture(e.pointerId); }
+  else startIfReady();
+});
+C.addEventListener('pointermove', (e) => { if (pointer.on) { const p = pos(e); pointer.x = p.x; pointer.y = p.y; } });
+C.addEventListener('pointerup', () => { pointer.on = false; });
+C.addEventListener('pointercancel', () => { pointer.on = false; });
+
+// ---------------------------------------------------------------- ANA DÖNGÜ
+let last = performance.now();
+function frame(now) {
+  // Animasyon gerçek zamanla ilerler (yavaş cihazda da rapor ile aynı anda biter);
+  // oyun fiziği ise kare başına en fazla 0.05 sn ilerler (takılmada araç duvardan geçmesin).
+  const raw = Math.max(0, (now - last) / 1000); last = now;
+  const dt = Math.min(0.05, raw); mt += Math.min(raw, 2);
+  X.save();
+  if (shake > 0) { shake -= dt; X.translate((Math.random() - 0.5) * 12 * shake, (Math.random() - 0.5) * 12 * shake); }
+  if (mode === 'countdown') { drawCountdown(); if (mt >= T.countdown) setMode('liftoff'); }
+  else if (mode === 'liftoff') { drawLiftoff(dt); if (mt >= T.liftoff) setMode('cruise'); }
+  else if (mode === 'cruise') drawCruise();
+  else if (mode === 'arrived') drawArrived(dt);
+  else if (mode === 'failed') drawFailed(dt);
+  else if (mode === 'ready') drawReady();
+  else if (mode === 'play') { update(dt); if (mode === 'play') drawGame(dt); }
+  else if (mode === 'end') drawEnd();
+  X.restore();
+  requestAnimationFrame(frame);
+}
+setMode(CFG.animate ? 'countdown' : (CFG.success ? 'ready' : 'failed'));
+requestAnimationFrame(frame);
+// LAUNCH'a basılınca sayfa aşağıda kalmasın: animasyon ekranını görünür yere kaydır
+try { window.frameElement.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+</script>
+</body>
+</html>

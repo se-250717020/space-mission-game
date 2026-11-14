@@ -3,17 +3,18 @@
 Notes for Claude Code sessions run by the Tech Lead. Since 2026-11-14 the whole team works together on the Tech Lead's PC through Claude Code; teammates no longer edit or push files from their own machines (the old per-person Gemini workflow is retired).
 
 ## Project
-- Python + Streamlit game: pick a target (Moon, Venus, Mars, Psyche, Europa, Titan), science objectives and an orbit; design a spacecraft (rocket, power, battery, flight computer, attitude control, radiation shield, comms antenna, ground station, instruments); launch; get a report card, post-mission analysis and the closest real NASA mission. Single player only (team mode was removed on 2026-11-14). Difficulties easy / normal / hard (random design twist) / sandbox. Space School (learn), Leaderboard and Share tabs.
+- Python + Streamlit game: pick a target (Moon, Venus, Mars, Psyche, Europa, Titan), science objectives and an orbit; design a spacecraft (rocket, power, battery, flight computer, attitude control, radiation shield, comms antenna, ground station, instruments); launch; get a report card, post-mission analysis and the closest real NASA mission. Single player only (team mode was removed on 2026-11-14). Difficulties easy / normal / hard (random design twist) / sandbox. Main menu (name, difficulty, Leaderboard, Space School, Options) → 3-column game screen → launch animation → a flying mini game when the mission succeeds.
 - Repo: https://github.com/se-250717020/space-mission-game (branch `main`). Deploys to Streamlit Community Cloud with main file `app.py`: https://space-mission-game.streamlit.app/ (auto-redeploys on every push to `main`).
 - The 4-person team is on its first hackathon, with no web experience. The user is the Tech Lead and speaks Turkish, so reply in Turkish.
-- The UI was redesigned on 2026-11-14 as a dark, minimal, kid-friendly game: 4-step flow, colored `st.progress` resource bars instead of numbers, 1-3 emoji part ratings (`calc.part_ratings`), simple engineer tips, and every technical detail inside `st.expander("📚 Why? (Learn more)")`. Keep on-screen text short and simple enough for a primary-school kid. Further visual polish is done together with the user.
+- The UI was redesigned on 2026-11-14 as a dark, minimal, kid-friendly game: main menu page, then a 3-column game screen (left workshop tabs, center dashboard with a giant LAUNCH button, right Space School info that follows the left selection); after launch `assets/flight.html` (vanilla JS canvas, Web Audio sounds, settings from `calc.minigame_params`) runs the countdown, the flight and the mini game. Colored `st.progress` resource bars instead of numbers, 1-3 emoji part ratings (`calc.part_ratings`), simple engineer tips, and every technical detail inside `st.expander("📚 Why? (Learn more)")`. Keep on-screen text short and simple enough for a primary-school kid. Further visual polish is done together with the user.
 
 ## Files
 | File | Role |
 |---|---|
 | `data.py` | Pure data dicts + `validate_schema()` |
 | `calculations.py` | Pure functions, **no `import streamlit`**; public API documented in its top docstring |
-| `app.py`, `assets/`, `.streamlit/config.toml` | Whole Streamlit UI (solo only; dark theme, 4-step flow, CSS at the end of `app.py`; on-screen word tables `CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`) |
+| `app.py`, `.streamlit/config.toml` | Whole Streamlit UI (solo only; dark theme, pages in `PAGES`, CSS at the end of `app.py`; on-screen word tables `CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`, `GAME_FEEL_WORDS`, `CATEGORY_KID`) |
+| `assets/flight.html` | Launch animation + mini game (vanilla JS, no libraries); `app.py` replaces `__CONFIG__` with JSON. Its timings must match `REPORT_DELAY_S` in `app.py` |
 | `AI_CONTEXT.md`, `requirements.txt`, `.gitignore`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md` | Contract and docs |
 
 Data flow: `data.py` → `calculations.py` → `app.py`. The shared contract is `AI_CONTEXT.md`: every data key, the 15-key `selection` dict (`data.SELECTION_KEYS`; `calculations.normalize_selection` fills missing keys so old 8-key selections still work), public functions and their result dicts. `data.CHECK_IDS` fixes the 12 check ids in order; each difficulty's `active_checks` decides which are scored.
