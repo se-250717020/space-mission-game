@@ -1,23 +1,30 @@
-import { useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { svgUrl } from '../api.js';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { postFlightScore, svgUrl } from '../api.js';
 import { audio, SFX } from '../sound.js';
 import { PLANETS, planetKey } from './Planet.jsx';
 
-// Uçuş mini oyunu (HTML5 canvas, React ref ile). Fizik eski flight.html ile aynı;
-// ayarlar backend'den gelir (calculations.minigame_params): tasarım oyunda hissedilir.
+// "SCIENCE RUN" uçuş mini oyunu (HTML5 canvas + React kartları).
+// Projenin mantığını oynatır: hedefte 💎 bilim verisi topla → hafızan (bilgisayar) dolunca
+// Dünya'nın 📡 gönderme bölgesine uç → anten veriyi eve yollar → puan. Asteroitlerden kaç (zırh),
+// enerjin bitmesin (güç), ağır araç zor döner (roket/kütle). Tüm ayarlar backend'den gelir
+// (calculations.minigame_params): tasarımın, gemini değiştirir.
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rnd = (a, b) => a + Math.random() * (b - a);
 const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
                  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down' };
 const MAX_PARTS = 400;                 // patlama parçacığı üst sınırı
 const PIXEL_BUDGET = 2_400_000;        // çok büyük/4K ekranda canvas piksel sayısı sınırı (FPS için)
+const HUD = 54;                        // üst gösterge yüksekliği
+const MAX_CRYSTALS = 9;
 
 // PERFORMANS NOTLARI
 // - Diziler "yerinde" temizlenir (compact): her karede filter() ile yeni dizi oluşturup çöp üretmez.
-// - Ekrandan çıkan asteroit, eşya, parçacık ve yazılar diziden hemen silinir (bellek sızıntısı yok).
-// - Gradyanlı arka plan, gezegen, asteroit ve emoji çizimleri bir kez küçük canvas'lara (sprite)
-//   çizilip önbellekte tutulur; her karede sadece drawImage yapılır.
+// - Ekrandan çıkan / ömrü biten asteroit, kristal, eşya, parçacık ve yazılar diziden hemen silinir.
+// - Gradyanlı arka plan, gezegenler, gönderme bölgesi, asteroit ve emoji çizimleri bir kez küçük
+//   canvas'lara (sprite) çizilip önbellekte tutulur; her karede sadece drawImage yapılır.
+// - React sadece ekran değişince (giriş → oyun → sonuç) yeniden çizer; oyun döngüsü React dışında.
 function compact(arr, keep) {
   let n = 0;
   for (let i = 0; i < arr.length; i++) if (keep(arr[i])) arr[n++] = arr[i];
@@ -28,29 +35,178 @@ function makeCanvas(w, h) {
   c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h));
   return c;
 }
+const readBest = () => { try { return Number(localStorage.getItem('smg_best_flight') || 0); } catch { return 0; } };
+const rankOf = (ranks, score) => ranks.reduce((best, r) => (score >= r.min ? r : best), ranks[0]);
+const nextRank = (ranks, score) => ranks.find((r) => r.min > score) || null;
+const Stars = ({ n }) => <span className="tracking-tighter text-amber">{'★'.repeat(n)}<span className="text-white/20">{'★'.repeat(Math.max(0, 3 - n))}</span></span>;
 
-export default function MiniGame({ params: G, craft, target, player, onExit }) {
+// ---------------------------------------------------------------- Giriş kartı: "Tasarımın → gemin"
+function Intro({ G, target, best, onStart }) {
+  const stats = [
+    ['🧠', 'Memory', <b key="v">{G.data_storage} 💎</b>, 'Flight computer'],
+    ['📡', 'Send speed', <Stars key="v" n={G.ratings.data} />, 'Antenna + dish'],
+    ['⚡', 'Power', <Stars key="v" n={G.ratings.energy} />, 'Power + battery'],
+    ['🛡️', 'Shields', <b key="v">{'❤️'.repeat(G.lives)}</b>, 'Radiation armor'],
+    ['🕹️', 'Steering', <Stars key="v" n={G.ratings.agility} />, 'Lighter = quicker'],
+    ['🔬', 'Science', <b key="v">+{G.packet_points} each</b>, 'Science tools'],
+  ];
+  const tier = rankOf(G.ranks, best);
+  return (
+    <motion.div className="absolute inset-0 z-10 overflow-y-auto bg-[#030611]/70 p-3 sm:p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="flex min-h-full items-center justify-center">
+        <motion.div className="glass relative w-full max-w-xl rounded-3xl p-4 text-center sm:p-6"
+                    initial={{ y: 30, scale: 0.94 }} animate={{ y: 0, scale: 1 }} transition={{ type: 'spring', stiffness: 240, damping: 22 }}>
+          <div className="font-mono text-[11px] tracking-[0.3em] text-cyan">FLIGHT CHALLENGE</div>
+          <h2 className="hero-title font-display text-3xl font-black sm:text-4xl">SCIENCE RUN</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-[#c4cee6] sm:text-base">
+            Grab <b>💎 science</b> near {target}, then fly into Earth&apos;s <b className="text-cyan">📡 beam</b> to send it home.
+            Send more in a row for a <b className="text-amber">combo!</b>
+          </p>
+          <div className="mt-3 font-display text-[11px] tracking-[0.25em] text-muted">YOUR DESIGN → YOUR SHIP</div>
+          <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2">
+            {stats.map(([icon, label, value, from], i) => (
+              <motion.div key={label} className="rounded-xl border border-white/10 bg-white/[.04] px-2 py-1.5 text-left"
+                          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }}>
+                <div className="flex items-center justify-between gap-1 text-sm"><span className="font-extrabold">{icon} {label}</span></div>
+                <div className="text-sm">{value}</div>
+                <div className="text-[11px] text-muted">from: {from}</div>
+              </motion.div>
+            ))}
+          </div>
+          <div className="mt-3 text-xs text-muted sm:text-sm">⬅️⬆️➡️⬇️ or W A S D · or touch and drag · ☄️ dodge rocks · ⚡ grab power</div>
+          <motion.button onClick={onStart} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
+                         className="launch-glow start-btn relative mt-3 w-full rounded-2xl py-3 font-display text-lg font-black tracking-widest text-white sm:text-xl">
+            <span className="absolute inset-0 overflow-hidden rounded-2xl"><span className="shine" /></span>
+            <span className="relative">▶ START RUN</span>
+          </motion.button>
+          <div className="mt-2 text-xs text-muted">Press <b>Space</b> to start · Your best: <b className="text-white">{best}</b> {best > 0 && <>({tier.icon} {tier.name})</>}</div>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------- Sonuç kartı: puan, rütbe, sıralama
+function EndCard({ result, server, onAgain, onReport }) {
+  const { score, tier, next, newBest, best } = result;
+  const place = server && server !== 'error' ? server : null;
+  return (
+    <motion.div className="absolute inset-0 z-10 overflow-y-auto bg-[#030611]/75 p-3 sm:p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="flex min-h-full items-center justify-center">
+        <motion.div className="glass relative w-full max-w-lg rounded-3xl p-4 text-center sm:p-6"
+                    initial={{ y: 40, scale: 0.9 }} animate={{ y: 0, scale: 1 }} transition={{ type: 'spring', stiffness: 220, damping: 20 }}>
+          <div className="text-base font-extrabold text-[#ffd98a] sm:text-lg">{result.reason}</div>
+          <div className="mt-1 font-display text-[11px] tracking-[0.25em] text-cyan">🔬 SCIENCE SENT HOME</div>
+          <motion.div className="font-display text-6xl font-black text-ok sm:text-7xl" style={{ textShadow: '0 0 28px rgba(34,211,166,.45)' }}
+                      initial={{ scale: 0.3 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 12, delay: 0.15 }}>
+            {score}
+          </motion.div>
+          <motion.div className="mx-auto mt-1 inline-flex items-center gap-2 rounded-full border border-amber/40 bg-amber/10 px-4 py-1.5"
+                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+            <span className="text-2xl">{tier.icon}</span>
+            <span className="font-display text-sm font-black tracking-wider text-amber sm:text-base">{tier.name.toUpperCase()}</span>
+          </motion.div>
+          <div className="mt-1 text-xs text-muted sm:text-sm">
+            {next ? <>Only <b className="text-white">{next.min - score}</b> more for {next.icon} {next.name}!</> : 'Top rank! You are a legend! 🌟'}
+          </div>
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5 text-xs sm:text-sm">
+            <span className="rounded-full bg-panel2 px-2.5 py-1">💎 {result.packets} sent</span>
+            <span className="rounded-full bg-panel2 px-2.5 py-1">🔥 best combo x{result.maxCombo}</span>
+            {result.loads > 0 && <span className="rounded-full bg-panel2 px-2.5 py-1">📦 {result.loads} full loads</span>}
+            {result.lost > 0 && <span className="rounded-full bg-bad/20 px-2.5 py-1 text-[#ffb3ba]">💾 {result.lost} left on board</span>}
+            <span className="rounded-full bg-panel2 px-2.5 py-1">{newBest ? '🏆 NEW BEST!' : `🏆 Best: ${best}`}</span>
+          </div>
+
+          {/* Pilot sıralaması (sunucudan) */}
+          <div className="mt-3 rounded-2xl border border-line bg-void/50 p-2.5 text-left">
+            <div className="mb-1 flex items-center justify-between font-display text-[11px] tracking-[0.2em] text-muted">
+              <span>🏆 TOP PILOTS</span>
+              {place && <span className="text-cyan">YOU: #{place.rank} of {place.total}</span>}
+            </div>
+            {server === null && <div className="py-2 text-center text-sm text-muted">Sending your score… 📡</div>}
+            {server === 'error' && <div className="py-2 text-center text-sm text-muted">Leaderboard offline. Your score is saved here. 💾</div>}
+            {place && (
+              <ol className="space-y-1">
+                {place.top.map((e, i) => {
+                  const me = place.saved && place.rank === i + 1;
+                  return (
+                    <motion.li key={`${i}-${e.name}-${e.score}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.05 }}
+                               className={`flex items-center gap-2 rounded-lg px-2 py-1 text-sm ${me ? 'bg-cyan/15 ring-1 ring-cyan/60' : ''}`}>
+                      <span className="w-6 text-center">{['🥇', '🥈', '🥉'][i] || i + 1}</span>
+                      <span className="min-w-0 flex-1 truncate font-bold">{e.name}{me && ' (you)'} <span className="text-xs font-normal text-muted">{e.rank_icon} {e.mission_name}</span></span>
+                      <span className="font-display text-cyan">{e.score}</span>
+                    </motion.li>
+                  );
+                })}
+                {place.top.length === 0 && <li className="py-1 text-center text-sm text-muted">No pilots yet. Be the first! 🚀</li>}
+              </ol>
+            )}
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <motion.button onClick={onAgain} whileTap={{ scale: 0.96 }} className="rounded-xl bg-cyan py-3 font-extrabold text-void">🔁 Fly again</motion.button>
+            <motion.button onClick={onReport} whileTap={{ scale: 0.96 }} className="rounded-xl border border-line bg-panel2 py-3 font-bold hover:border-cyan">📋 Mission report</motion.button>
+          </div>
+          <div className="mt-1.5 text-[11px] text-muted">Tip: a better design = a better ship. Try a bigger antenna or more memory!</div>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+export default function MiniGame({ params: G, craft, target, player, selection, onExit }) {
   const canvasRef = useRef(null);
-  const scoreRef = useRef(0);
+  const ctl = useRef({ start: () => {} });   // canvas döngüsünü React'ten başlatmak için
+  const [screen, setScreen] = useState('intro');   // intro | play | end
+  const [result, setResult] = useState(null);
+  const [server, setServer] = useState(null);
+  const bestRef = useRef(readBest());
+  const sessionBest = useRef(null);            // bu oturumdaki en iyi uçuş (rapora gider)
+
+  // Canvas döngüsünden gelen olaylar (ref: fonksiyon her çizimde değişse de döngü yeniden kurulmaz)
+  const events = useRef({});
+  events.current.start = () => { setScreen('play'); setResult(null); setServer(null); };
+  events.current.end = (res) => {
+    const tier = rankOf(G.ranks, res.score);
+    const newBest = res.score > bestRef.current;
+    if (newBest) { bestRef.current = res.score; try { localStorage.setItem('smg_best_flight', String(res.score)); } catch { /* yok */ } }
+    if (!sessionBest.current || res.score >= sessionBest.current.score) sessionBest.current = { score: res.score, rankName: tier.name, rankIcon: tier.icon };
+    setResult({ ...res, tier, next: nextRank(G.ranks, res.score), newBest, best: bestRef.current });
+    setServer(null);
+    setScreen('end');
+    if (newBest || tier !== rankOf(G.ranks, 0)) setTimeout(() => SFX.rank(), 450);
+    postFlightScore(selection, player, res.score, res.packets)
+      .then((r) => {
+        setServer(r);
+        if (sessionBest.current && sessionBest.current.score === res.score) sessionBest.current = { ...sessionBest.current, place: r.saved ? r.rank : null, total: r.total };
+      })
+      .catch(() => setServer('error'));
+  };
 
   useEffect(() => {
     const C = canvasRef.current;
     const X = C.getContext('2d', { alpha: false });   // opak canvas: tarayıcı alttakiyle karıştırmaz (daha hızlı)
     let DPR = 1;
     let W = 640, H = 440, raf = 0, last = performance.now();
-    let mode = 'ready', mt = 0, shake = 0, S = null, parts = [];
-    let best = 0;
-    try { best = Number(localStorage.getItem('smg_best_flight') || 0); } catch { best = 0; }
+    let mode = 'intro', mt = 0, shake = 0, S = null, parts = [];
     const keys = {};
     const pointer = { on: false, x: 0, y: 0 };
-    const PL = PLANETS[planetKey(target)] || PLANETS.Moon;
+    const PT = PLANETS[planetKey(target)] || PLANETS.Moon;
     const img = new Image(); img.src = svgUrl(craft.svg);
     const stars = Array.from({ length: 170 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2 }));
+    let geo = null;                  // Dünya, gönderme bölgesi, hedef gezegen ve bilim alanının yerleri
 
     // Önbellekler (boyut değişince temizlenir)
     let bgCache = null;
     const planetCache = new Map();
-    const spriteCache = new Map();   // emoji ve parlayan başlık yazıları
+    const spriteCache = new Map();   // emoji, parlayan yazılar, ışımalar
+    const layout = () => {
+      const er = Math.min(H * 0.45, W * 0.32);                      // Dünya yarıçapı (çoğu ekran dışında)
+      const ex = -er * 0.45, ey = H * 0.6;
+      const zr = er + clamp(W * 0.13, 70, 190);                       // gönderme bölgesi
+      const tr = Math.min(H * 0.3, W * 0.2);
+      geo = { ex, ey, er, zr, tx: W + tr * 0.3, ty: H * 0.42, tr, fx0: Math.max(W * 0.5, ex + zr + 70) };
+    };
     const resize = () => {
       W = C.clientWidth || 640; H = C.clientHeight || 440;
       DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -58,6 +214,7 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       C.width = Math.round(W * DPR); C.height = Math.round(H * DPR);
       X.setTransform(DPR, 0, 0, DPR, 0, 0);
       bgCache = null; planetCache.clear(); spriteCache.clear();
+      layout();
     };
     resize();
     const ro = new ResizeObserver(resize); ro.observe(C);
@@ -67,14 +224,15 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       X.font = `800 ${size}px Nunito, system-ui, sans-serif`; X.fillStyle = color || '#fff';
       X.textAlign = align || 'center'; X.textBaseline = 'middle'; X.fillText(s, x, y);
     };
-    // Sabit yazı/emoji: bir kez küçük canvas'a çizilir, sonra sadece kopyalanır
-    // (emoji ve shadowBlur'lu yazı canvas'ta en pahalı çizimlerdendir)
-    const sprite = (key, w, h, draw) => {
+    // Sabit yazı/emoji/ışıma: bir kez küçük canvas'a çizilir, sonra sadece kopyalanır
+    // (emoji, shadowBlur'lu yazı ve büyük gradyanlar canvas'ta en pahalı çizimlerdendir).
+    // scale < 1: yumuşak ışımalar düşük çözünürlükte saklanır (bellek dostu, fark edilmez)
+    const sprite = (key, w, h, draw, scale = DPR) => {
       let c = spriteCache.get(key);
       if (!c) {
-        if (spriteCache.size > 64) spriteCache.clear();
-        c = makeCanvas(w * DPR, h * DPR);
-        const x = c.getContext('2d'); x.scale(DPR, DPR); draw(x, w, h);
+        if (spriteCache.size > 80) spriteCache.clear();
+        c = makeCanvas(w * scale, h * scale);
+        const x = c.getContext('2d'); x.scale(scale, scale); draw(x, w, h);
         c.w = w; c.h = h; spriteCache.set(key, c);
       }
       return c;
@@ -86,26 +244,23 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       });
       X.drawImage(c, x - box / 2, y - box / 2, box, box);
     };
-    const title = (s, x, y, size, color) => {
-      const font = `900 ${size}px Orbitron, system-ui, sans-serif`;
-      X.font = font;
-      const w = Math.ceil(X.measureText(s).width + 48), h = Math.ceil(size * 1.6 + 32);
-      const c = sprite(`t${s}${size}${color}`, w, h, (g) => {
-        g.font = font; g.fillStyle = color || '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.shadowColor = color || '#4fd1ff'; g.shadowBlur = 16; g.fillText(s, w / 2, h / 2);
-      });
-      X.drawImage(c, x - w / 2, y - h / 2, w, h);
+    const glowDot = (x, y, r, rgb) => {
+      const c = sprite(`g${rgb}${Math.round(r)}`, r * 2, r * 2, (g, w) => {
+        const rg = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+        rg.addColorStop(0, `rgba(${rgb},.55)`); rg.addColorStop(1, `rgba(${rgb},0)`);
+        g.fillStyle = rg; g.fillRect(0, 0, w, w);
+      }, 0.5);
+      X.drawImage(c, x - r, y - r, r * 2, r * 2);
     };
     const space = (scroll) => {
-      // Gradyanlı gökyüzü bir kez çizilir (boyut değişene kadar)
       if (!bgCache) {
         bgCache = makeCanvas(W * DPR, H * DPR);
         const b = bgCache.getContext('2d'); b.scale(DPR, DPR);
         const g = b.createLinearGradient(0, 0, 0, H);
         g.addColorStop(0, '#070d22'); g.addColorStop(0.6, '#03060f'); g.addColorStop(1, '#010309');
         b.fillStyle = g; b.fillRect(0, 0, W, H);
-        const n = b.createRadialGradient(W * 0.62, H * 0.7, 0, W * 0.62, H * 0.7, W * 0.5);
-        n.addColorStop(0, 'rgba(120,80,200,.10)'); n.addColorStop(1, 'rgba(120,80,200,0)');
+        const n = b.createRadialGradient(W * 0.75, H * 0.4, 0, W * 0.75, H * 0.4, W * 0.5);
+        n.addColorStop(0, 'rgba(120,80,200,.12)'); n.addColorStop(1, 'rgba(120,80,200,0)');
         b.fillStyle = n; b.fillRect(0, 0, W, H);
       }
       X.drawImage(bgCache, 0, 0, W, H);
@@ -116,28 +271,51 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       }
       X.globalAlpha = 1;
     };
-    const planet = (x, y, r) => {
-      const key = Math.round(r), R = key * 1.3, size = R * 2;
+    const planet = (P, name, x, y, r) => {
+      const key = `${name}${Math.round(r)}`, R = Math.round(r) * 1.3, size = R * 2, k = Math.round(r);
       let c = planetCache.get(key);
       if (!c) {
         c = makeCanvas(size * DPR, size * DPR);
         const p = c.getContext('2d'); p.scale(DPR, DPR);
         const cx = R, cy = R;
-        if (PL.glow) {
-          const h = p.createRadialGradient(cx, cy, key * 0.92, cx, cy, key * 1.28);
-          h.addColorStop(0, PL.glow); h.addColorStop(1, 'rgba(0,0,0,0)');
-          p.fillStyle = h; p.beginPath(); p.arc(cx, cy, key * 1.28, 0, TAU); p.fill();
+        if (P.glow) {
+          const h = p.createRadialGradient(cx, cy, k * 0.92, cx, cy, k * 1.28);
+          h.addColorStop(0, P.glow); h.addColorStop(1, 'rgba(0,0,0,0)');
+          p.fillStyle = h; p.beginPath(); p.arc(cx, cy, k * 1.28, 0, TAU); p.fill();
         }
-        p.beginPath(); p.arc(cx, cy, key, 0, TAU); p.clip();
-        const g = p.createRadialGradient(cx - key * 0.4, cy - key * 0.45, key * 0.05, cx, cy, key * 1.15);
-        g.addColorStop(0, PL.c[0]); g.addColorStop(0.55, PL.c[1]); g.addColorStop(1, PL.c[2]);
-        p.fillStyle = g; p.fillRect(cx - key, cy - key, key * 2, key * 2);
-        const sh = p.createLinearGradient(cx - key * 0.3, cy - key * 0.3, cx + key, cy + key);
+        p.beginPath(); p.arc(cx, cy, k, 0, TAU); p.clip();
+        const g = p.createRadialGradient(cx - k * 0.4, cy - k * 0.45, k * 0.05, cx, cy, k * 1.15);
+        g.addColorStop(0, P.c[0]); g.addColorStop(0.55, P.c[1]); g.addColorStop(1, P.c[2]);
+        p.fillStyle = g; p.fillRect(cx - k, cy - k, k * 2, k * 2);
+        if (P.land) {   // Dünya: kıtalar
+          p.fillStyle = 'rgba(70,160,90,.85)';
+          [[-0.3, -0.25, 0.32, 0.2], [0.1, 0.3, 0.2, 0.32], [0.45, -0.35, 0.25, 0.14]].forEach(([dx, dy, rx, ry]) => {
+            p.beginPath(); p.ellipse(cx + dx * k, cy + dy * k, rx * k, ry * k, 0.3, 0, TAU); p.fill();
+          });
+        }
+        const sh = p.createLinearGradient(cx - k * 0.3, cy - k * 0.3, cx + k, cy + k);
         sh.addColorStop(0, 'rgba(0,0,8,0)'); sh.addColorStop(1, 'rgba(0,0,8,.82)');
-        p.fillStyle = sh; p.fillRect(cx - key, cy - key, key * 2, key * 2);
+        p.fillStyle = sh; p.fillRect(cx - k, cy - k, k * 2, k * 2);
         planetCache.set(key, c);
       }
       X.drawImage(c, x - R, y - R, size, size);
+    };
+    // Gönderme bölgesi: Dünya'nın etrafında nabız gibi atan mavi ışık halkası
+    const zone = (pulse, active) => {
+      const { ex, ey, er, zr } = geo;
+      const c = sprite(`zone${Math.round(zr)}`, zr * 2, zr * 2, (g, w) => {
+        const rg = g.createRadialGradient(w / 2, w / 2, er * 0.95, w / 2, w / 2, zr);
+        rg.addColorStop(0, 'rgba(79,209,255,.34)'); rg.addColorStop(0.65, 'rgba(79,209,255,.12)'); rg.addColorStop(1, 'rgba(79,209,255,0)');
+        g.fillStyle = rg; g.beginPath(); g.arc(w / 2, w / 2, zr, 0, TAU); g.fill();
+      }, 0.5);
+      X.globalAlpha = (active ? 0.9 : 0.55) + 0.25 * pulse;
+      X.drawImage(c, ex - zr, ey - zr, zr * 2, zr * 2);
+      X.globalAlpha = 1;
+      X.strokeStyle = active ? 'rgba(160,235,255,.9)' : 'rgba(79,209,255,.55)'; X.lineWidth = 2; X.setLineDash([8, 10]);
+      X.lineDashOffset = -mt * 30;
+      X.beginPath(); X.arc(ex, ey, zr, -Math.PI / 2, Math.PI / 2); X.stroke(); X.setLineDash([]);
+      const a = -0.95, lx = clamp(ex + Math.cos(a) * zr * 0.82, 50, W - 60), ly = clamp(ey + Math.sin(a) * zr * 0.82, HUD + 18, H - 20);
+      txt('📡 SEND ZONE', lx, ly, W < 460 ? 11 : 13, active ? '#e2f7ff' : '#9fdcff');
     };
     // Asteroit resmi doğduğu anda bir kez çizilir; her karede sadece döndürülüp kopyalanır
     const rockSprite = (r, pts) => {
@@ -170,7 +348,7 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
     const drawParts = (dt) => {
       for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98; p.vy *= 0.98; p.life -= dt; }
       compact(parts, (p) => p.life > 0 && onScreen(p.x, p.y, 10));   // ömrü biten / ekrandan çıkan silinir
-      for (const p of parts) { X.globalAlpha = Math.min(1, p.life); X.fillStyle = p.c; X.beginPath(); X.arc(p.x, p.y, p.r, 0, TAU); X.fill(); }
+      for (const p of parts) { X.globalAlpha = Math.min(1, p.life); X.fillStyle = p.c; X.fillRect(p.x - p.r / 2, p.y - p.r / 2, p.r, p.r); }
       X.globalAlpha = 1;
     };
     const bar = (x, y, w, h, frac, c) => {
@@ -180,25 +358,41 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
 
     // ---------------- oyun mantığı
     const newGame = () => {
-      S = { x: W * 0.2, y: H / 2, vx: 0, vy: 0, energy: 100, lives: G.lives, tank: 0, acc: 0, score: 0, sent: 0,
-            t: 0, inv: 1.2, rocks: [], items: [], floats: [], spawnR: 1.0, spawnD: 0.6, spawnE: 5, thrust: false,
-            reason: '', beam: 0, newBest: false };
+      S = { x: W * 0.32, y: H * 0.55, vx: 0, vy: 0, energy: 100, lives: G.lives, tank: 0, acc: 0, score: 0, sent: 0,
+            t: 0, inv: 1.2, rocks: [], crystals: [], items: [], floats: [], spawnR: 1.4, spawnC: 0.2, spawnE: 6, thrust: false,
+            combo: 1, streak: 0, maxCombo: 1, loads: 0, inZone: false, beam: 0, fullWarn: 0, comboPop: 0 };
       parts = [];
+      for (let i = 0; i < 4; i++) spawnCrystal(true);
     };
-    const setMode = (m) => { mode = m; mt = 0; if (m === 'play') newGame(); };
-    const floatText = (s, x, y, c) => S.floats.push({ s, x, y, c, life: 1 });
+    const floatText = (s, x, y, c, size = 15) => { if (S.floats.length < 40) S.floats.push({ s, x, y, c, size, life: 1.1 }); };
     const spawnRock = (ramp) => {
       const r = 13 + Math.random() * 22, pts = Array.from({ length: 9 }, () => 0.7 + Math.random() * 0.35);
-      S.rocks.push({ x: W + r, y: 60 + Math.random() * (H - 80), r, img: rockSprite(r, pts), rot: 0, vr: (Math.random() - 0.5) * 3,
-                     vx: -(140 + Math.random() * 130) * Math.sqrt(ramp), vy: (Math.random() - 0.5) * 40 });
+      S.rocks.push({ x: W + r, y: HUD + 20 + Math.random() * (H - HUD - 40), r, img: rockSprite(r, pts), rot: 0, vr: (Math.random() - 0.5) * 3,
+                     vx: -(140 + Math.random() * 130) * Math.sqrt(ramp), vy: (Math.random() - 0.5) * 50 });
     };
-    const spawnItem = (kind) => S.items.push({ kind, x: W + 20, y: 64 + Math.random() * (H - 96), vx: -(120 + Math.random() * 70), bob: Math.random() * 6 });
+    function spawnCrystal(initial) {
+      if (S.crystals.length >= MAX_CRYSTALS) return;
+      S.crystals.push({ x: rnd(geo.fx0, W - 40), y: rnd(HUD + 40, H - 40), vx: -rnd(14, 34), bob: Math.random() * 6,
+                        age: initial ? rnd(0, 2) : 0, life: rnd(11, 15) });
+    }
+    const spawnEnergy = () => S.items.push({ x: W + 20, y: rnd(HUD + 40, H - 40), vx: -rnd(90, 140), bob: Math.random() * 6 });
+    const startGame = () => { audio(); SFX.start(); mode = 'play'; mt = 0; newGame(); events.current.start(); };
     const endGame = (reason) => {
-      S.reason = reason;
-      scoreRef.current = Math.max(scoreRef.current, S.score);
-      if (S.score > best) { best = S.score; S.newBest = true; try { localStorage.setItem('smg_best_flight', String(best)); } catch { /* yok */ } }
-      if (S.score >= 1 && reason.startsWith('🏁')) SFX.win(); else SFX.over();
-      setMode('end');
+      mode = 'over'; mt = 0;
+      if (reason.startsWith('🏁')) SFX.win(); else SFX.over();
+      events.current.end({ score: S.score, packets: S.sent, reason, lost: S.tank, maxCombo: S.maxCombo, loads: S.loads });
+    };
+    ctl.current.start = () => { if (mode !== 'play') startGame(); };
+
+    const sendPacket = () => {
+      const pts = G.packet_points * S.combo;
+      S.tank -= 1; S.sent += 1; S.score += pts; S.beam = 0.35; S.streak += 1;
+      SFX.sent();
+      floatText(`+${pts}`, S.x + rnd(-8, 8), S.y - 30, S.combo > 1 ? '#ffd98a' : '#bff5e6');
+      if (S.streak % G.combo_step === 0 && S.combo < G.max_combo) {
+        S.combo += 1; S.maxCombo = Math.max(S.maxCombo, S.combo); S.comboPop = 1;
+        SFX.combo(); floatText(`COMBO x${S.combo}!`, S.x, S.y - 54, '#ffb347', 20);
+      }
     };
     const update = (dt) => {
       S.t += dt;
@@ -213,59 +407,100 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       S.vx -= S.vx * drag * dt; S.vy -= S.vy * drag * dt;
       S.x += S.vx * dt; S.y += S.vy * dt;
       if (S.x < 22) { S.x = 22; S.vx = 0; } if (S.x > W - 22) { S.x = W - 22; S.vx = 0; }
-      if (S.y < 62) { S.y = 62; S.vy = 0; } if (S.y > H - 22) { S.y = H - 22; S.vy = 0; }
+      if (S.y < HUD + 18) { S.y = HUD + 18; S.vy = 0; } if (S.y > H - 22) { S.y = H - 22; S.vy = 0; }
       // Güç payı az → enerji hızlı biter (G.energy_drain)
       S.energy -= G.energy_drain * dt * (S.thrust ? 1.6 : 1.0);
       if (S.energy <= 0) { S.energy = 0; endGame('🔌 Out of power!'); return; }
       const ramp = 1 + S.t / 45;
       S.spawnR -= dt; if (S.spawnR <= 0) { S.spawnR = (0.6 + Math.random() * 0.8) / (0.8 * G.asteroid_rate * ramp); spawnRock(ramp); }
-      S.spawnD -= dt; if (S.spawnD <= 0) { S.spawnD = 0.8 + Math.random() * 0.7; spawnItem('data'); }
-      S.spawnE -= dt; if (S.spawnE <= 0) { S.spawnE = 4.5 + Math.random() * 2.5; spawnItem('energy'); }
+      S.spawnC -= dt; if (S.spawnC <= 0) { S.spawnC = rnd(0.5, 0.95); spawnCrystal(false); }
+      S.spawnE -= dt; if (S.spawnE <= 0) { S.spawnE = rnd(4.5, 7); spawnEnergy(); }
       S.inv = Math.max(0, S.inv - dt);
+      S.fullWarn = Math.max(0, S.fullWarn - dt);
+      S.comboPop = Math.max(0, S.comboPop - dt * 2.5);
+      // Asteroitler: çarpınca kalkan (can) gider ve kombo sıfırlanır
       for (const r of S.rocks) {
         r.x += r.vx * dt; r.y += r.vy * dt; r.rot += r.vr * dt;
         if (!r.dead && S.inv <= 0 && Math.hypot(r.x - S.x, r.y - S.y) < r.r + 11) {
-          r.dead = true; S.lives -= 1; S.inv = 1.6; shake = 5; SFX.hit();
+          r.dead = true; S.lives -= 1; S.inv = 1.6; shake = 6; SFX.hit();
           burst(S.x, S.y, 26, ['#ffb347', '#9aa7bf', '#fc3d21'], 200);
-          floatText('-1 ❤️', S.x, S.y - 26, '#ffb3ba');
+          floatText(S.combo > 1 ? '-1 🛡️ combo lost!' : '-1 🛡️', S.x, S.y - 30, '#ffb3ba');
+          S.combo = 1; S.streak = 0;
           if (S.lives <= 0) { endGame('💥 Your spacecraft broke!'); return; }
         }
       }
-      // Ekrandan çıkan (sola, yukarı ya da aşağı) veya çarpan asteroitler diziden silinir
       compact(S.rocks, (r) => !r.dead && r.x > -r.r - 20 && r.y > -r.r - 40 && r.y < H + r.r + 40);
+      // Bilim kristalleri: hafıza (bilgisayar) doluysa alınamaz
+      for (const c of S.crystals) {
+        c.x += c.vx * dt; c.bob += dt * 3; c.age += dt;
+        if (!c.got && Math.hypot(c.x - S.x, c.y - S.y) < 28) {
+          if (S.tank < G.data_storage) {
+            c.got = true; S.tank += 1; SFX.collect();
+            burst(c.x, c.y, 8, ['#9fdcff', '#ffffff', '#c084fc'], 120);
+            floatText(S.tank >= G.data_storage ? 'MEMORY FULL! 📡' : '+💎', c.x, c.y - 16, S.tank >= G.data_storage ? '#ffb347' : '#9fdcff');
+          } else if (S.fullWarn <= 0) {
+            S.fullWarn = 1.4; SFX.full(); floatText('Memory full! Send it home ⬅️', S.x, S.y - 34, '#ffb3ba');
+          }
+        }
+      }
+      compact(S.crystals, (c) => !c.got && c.age < c.life && c.x > -30);
       for (const it of S.items) {
         it.x += it.vx * dt; it.bob += dt * 4;
         if (!it.got && Math.hypot(it.x - S.x, it.y - S.y) < 26) {
-          it.got = true;
-          if (it.kind === 'energy') { S.energy = Math.min(100, S.energy + 30); SFX.energy(); floatText('+⚡', it.x, it.y, '#ffe066'); }
-          else if (S.tank < G.data_storage) { S.tank += 1; SFX.collect(); floatText('💾', it.x, it.y, '#9fdcff'); }
-          else { SFX.full(); floatText('MEMORY FULL!', it.x, it.y, '#ffb3ba'); }
+          it.got = true; S.energy = Math.min(100, S.energy + 30); SFX.energy(); floatText('+⚡', it.x, it.y, '#ffe066');
         }
       }
       compact(S.items, (it) => !it.got && it.x > -40);
-      // Anten veriyi Dünya'ya yollar (G.downlink_rate paket / saniye)
-      if (S.tank > 0) {
-        S.acc += G.downlink_rate * dt;
-        while (S.acc >= 1 && S.tank > 0) {
-          S.acc -= 1; S.tank -= 1; S.sent += 1; S.score += G.packet_points; S.beam = 0.3; SFX.sent();
-          floatText('+' + G.packet_points + ' 🔬', 40, H - 52, '#bff5e6');
-        }
-      } else { S.acc = Math.min(1, S.acc + G.downlink_rate * dt); }
-      S.beam = Math.max(0, S.beam - dt);
-      if (S.t >= G.seconds) {
-        if (S.tank > 0) { S.score += S.tank * G.packet_points; S.sent += S.tank; S.tank = 0; }
-        endGame('🏁 Mission complete!');
+      // Gönderme bölgesi: içerideyken anten veriyi Dünya'ya yollar (G.zone_send_rate paket / saniye)
+      const inZone = Math.hypot(S.x - geo.ex, S.y - geo.ey) < geo.zr;
+      if (inZone && !S.inZone && S.tank >= G.data_storage && G.data_storage > 0) {
+        // Hafıza tamamen doluyken eve gelmek: tam yük bonusu
+        const bonus = Math.round(G.packet_points * G.data_storage * G.full_load_bonus * S.combo);
+        S.score += bonus; S.loads += 1; SFX.start();
+        floatText(`📦 FULL LOAD +${bonus}!`, S.x, S.y - 56, '#22d3a6', 19);
+        burst(S.x, S.y, 18, ['#22d3a6', '#bff5e6', '#ffffff'], 180);
       }
+      S.inZone = inZone;
+      if (inZone && S.tank > 0) {
+        S.acc += G.zone_send_rate * dt;
+        while (S.acc >= 1 && S.tank > 0) { S.acc -= 1; sendPacket(); }
+      } else if (!inZone) S.acc = 0;
+      S.beam = Math.max(0, S.beam - dt);
+      if (S.t >= G.seconds) endGame('🏁 Time is up! Great flying!');
+    };
+
+    const drawScene = (scroll, pulse) => {
+      space(scroll);
+      planet(PT, 'target', geo.tx, geo.ty, geo.tr);
+      zone(pulse, S && mode === 'play' && S.inZone && S.tank > 0);
+      planet(PLANETS.Earth, 'earth', geo.ex, geo.ey, geo.er);
+    };
+    const drawShip = (x, y, tilt, size, thrust) => {
+      if (thrust) {
+        X.save(); X.translate(x, y); X.rotate(tilt); X.globalCompositeOperation = 'lighter';
+        const L = 16 + Math.random() * 14, g = X.createLinearGradient(-size * 0.2, 0, -size * 0.2 - L, 0);
+        g.addColorStop(0, 'rgba(200,220,255,.95)'); g.addColorStop(1, 'rgba(90,130,255,0)');
+        X.fillStyle = g; X.beginPath(); X.moveTo(-size * 0.18, -5); X.lineTo(-size * 0.2 - L, 0); X.lineTo(-size * 0.18, 5); X.fill();
+        X.restore();
+      }
+      craftImg(x, y, size, tilt);
     };
     const drawGame = (dt) => {
-      space(260);
-      planet(W - 40, H - 30, Math.min(W, H) * 0.2);
-      emoji('🌍', 28, H - 26, 30);
+      const pulse = (Math.sin(mt * 3) + 1) / 2;
+      drawScene(260, pulse);
+      // Veri ışını: gemiden Dünya'ya
       if (S.beam > 0) {
-        X.strokeStyle = `rgba(79,209,255,${S.beam * 3})`; X.lineWidth = 2; X.setLineDash([4, 6]);
-        X.beginPath(); X.moveTo(S.x, S.y); X.lineTo(28, H - 26); X.stroke(); X.setLineDash([]);
+        X.strokeStyle = `rgba(140,225,255,${Math.min(1, S.beam * 3)})`; X.lineWidth = 3; X.setLineDash([6, 8]); X.lineDashOffset = mt * 60;
+        X.beginPath(); X.moveTo(S.x, S.y); X.lineTo(geo.ex + geo.er * 0.7, geo.ey - geo.er * 0.2); X.stroke(); X.setLineDash([]);
       }
-      for (const it of S.items) emoji(it.kind === 'energy' ? '⚡' : '💾', it.x, it.y + Math.sin(it.bob) * 4, 24);
+      for (const c of S.crystals) {
+        const fade = Math.min(1, c.age * 2, (c.life - c.age) / 1.5), y = c.y + Math.sin(c.bob) * 4;
+        X.globalAlpha = Math.max(0, fade);
+        glowDot(c.x, y, 22, '160,200,255');
+        emoji('💎', c.x, y, 22);
+      }
+      X.globalAlpha = 1;
+      for (const it of S.items) { glowDot(it.x, it.y, 20, '255,224,102'); emoji('⚡', it.x, it.y + Math.sin(it.bob) * 4, 22); }
       for (const r of S.rocks) {
         if (r.x - r.r > W) continue;   // henüz ekrana girmedi
         X.save(); X.translate(r.x, r.y); X.rotate(r.rot);
@@ -274,60 +509,84 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       }
       const tilt = clamp(S.vy / 500, -0.5, 0.5);
       const blink = S.inv > 0 && Math.floor(S.inv * 10) % 2 === 0;
-      if (!blink) {
-        const size = clamp(W * 0.1, 48, 72);
-        if (S.thrust) {
-          X.save(); X.translate(S.x, S.y); X.rotate(tilt); X.globalCompositeOperation = 'lighter';
-          const L = 16 + Math.random() * 14, g = X.createLinearGradient(-size * 0.2, 0, -size * 0.2 - L, 0);
-          g.addColorStop(0, 'rgba(200,220,255,.95)'); g.addColorStop(1, 'rgba(90,130,255,0)');
-          X.fillStyle = g; X.beginPath(); X.moveTo(-size * 0.18, -5); X.lineTo(-size * 0.2 - L, 0); X.lineTo(-size * 0.18, 5); X.fill();
-          X.restore();
-        }
-        craftImg(S.x, S.y, size, tilt);
+      const size = clamp(W * 0.1, 48, 72);
+      if (!blink) drawShip(S.x, S.y, tilt, size, S.thrust);
+      // Hafıza dolu: Dünya'yı gösteren ok
+      if (S.tank >= G.data_storage && !S.inZone) {
+        const a = Math.atan2(geo.ey - S.y, geo.ex + geo.er - S.x);
+        X.save(); X.translate(S.x + Math.cos(a) * 46, S.y + Math.sin(a) * 46); X.rotate(a);
+        X.globalAlpha = 0.6 + 0.4 * pulse; X.fillStyle = '#ffb347';
+        X.beginPath(); X.moveTo(12, 0); X.lineTo(-6, -8); X.lineTo(-2, 0); X.lineTo(-6, 8); X.fill(); X.restore(); X.globalAlpha = 1;
       }
       drawParts(dt);
-      for (const f of S.floats) { f.y -= 30 * dt; f.life -= dt; X.globalAlpha = Math.max(0, f.life); txt(f.s, f.x, f.y, 15, f.c); }
+      for (const f of S.floats) { f.y -= 32 * dt; f.life -= dt; X.globalAlpha = Math.max(0, Math.min(1, f.life * 1.5)); txt(f.s, f.x, f.y, f.size, f.c); }
       X.globalAlpha = 1; compact(S.floats, (f) => f.life > 0);
-      // Üst gösterge
-      X.fillStyle = 'rgba(3,6,13,.82)'; X.fillRect(0, 0, W, 46);
-      const small = W < 460, fs = small ? 13 : 15, bw = small ? 46 : 80;
-      let x = 10;
-      txt('❤️'.repeat(Math.max(0, S.lives)) || '💔', x, 23, small ? 12 : 15, '#fff', 'left'); x += (small ? 15 : 19) * Math.max(1, G.lives) + 8;
-      txt('⚡', x, 23, fs, '#fff', 'left'); bar(x + 20, 18, bw, 10, S.energy / 100, S.energy > 30 ? '#ffe066' : '#ff4d5e'); x += bw + 30;
-      txt('💾', x, 23, fs, '#fff', 'left');
-      for (let i = 0; i < G.data_storage; i++) {
-        X.fillStyle = i < S.tank ? (S.tank >= G.data_storage ? '#ff8a3d' : '#4fd1ff') : 'rgba(255,255,255,.14)';
-        X.fillRect(x + 22 + i * (small ? 7 : 10), 17, small ? 5 : 8, 12);
+      // İlk saniyelerde kısa yön tarifi
+      if (S.t < 7 && S.sent === 0) {
+        X.globalAlpha = Math.min(1, (7 - S.t) / 1.5);
+        // Dar ekranda yazı, sağ alttaki "Mission report" düğmesinin üstünde durur
+        txt(S.tank === 0 ? 'Grab the 💎 science ➡️' : S.tank < G.data_storage ? 'Now fly into the 📡 SEND ZONE ⬅️' : 'Memory full! Fly home ⬅️',
+            W / 2, W < 560 ? H - 72 : H - 26, W < 460 ? 13 : 16, '#e2f7ff');
+        X.globalAlpha = 1;
       }
-      txt(`⏱️ ${Math.max(0, Math.ceil(G.seconds - S.t))}`, W - 10, 23, fs, '#fff', 'right');
-      txt(`🔬 ${S.score}`, W - (small ? 62 : 80), 23, fs, '#bff5e6', 'right');
+      drawHud();
     };
-    const drawReady = () => {
-      space(60);
-      planet(W * 0.86, H * 0.8, Math.min(W, H) * 0.22);
-      craftImg(W * 0.5, H * 0.62 + Math.sin(mt * 2) * 4, clamp(Math.min(W, H) * 0.2, 60, 110), 0);
-      title(`🎮 FLY IT, ${player.toUpperCase()}!`, W / 2, H * 0.13, clamp(W / 16, 18, 38), '#4fd1ff');
-      const fs = W < 420 ? 13 : 16, lh = fs + 11;
-      ['⬅️ ⬆️ ➡️ ⬇️  or  W A S D  to fly  (or touch and drag)',
-       '💾 Grab data: your antenna sends it home as 🔬 points',
-       `⚡ Grab energy · ☄️ Dodge the asteroids · ⏱️ ${G.seconds} s`].forEach((l, i) => txt(l, W / 2, H * 0.27 + i * lh, fs, '#d3dae8'));
-      if (Math.floor(mt * 2) % 2 === 0) title('CLICK / TAP OR PRESS SPACE TO START', W / 2, H * 0.9, clamp(W / 30, 12, 20));
+    // Üst gösterge: her göstergenin altında, onu belirleyen parçanın adı (tasarım ↔ oyun bağlantısı)
+    const drawHud = () => {
+      X.fillStyle = 'rgba(3,6,13,.86)'; X.fillRect(0, 0, W, HUD);
+      X.fillStyle = 'rgba(79,209,255,.25)'; X.fillRect(0, HUD - 1, W, 1);
+      const small = W < 560, fs = small ? 12 : 15, lab = small ? 8.5 : 10, vy = 22, ly = 43;
+      let x = 10;
+      const label = (s, lx) => txt(s, lx, ly, lab, '#7d8bad', 'left');
+      txt('❤️'.repeat(Math.max(0, S.lives)) || '💔', x, vy, small ? 11 : 14, '#fff', 'left'); label('SHIELDS · armor', x);
+      x += Math.max((small ? 14 : 18) * G.lives, small ? 64 : 92) + 10;
+      const bw = small ? 44 : 84;
+      txt('⚡', x, vy, fs, '#fff', 'left'); bar(x + 18, vy - 5, bw, 10, S.energy / 100, S.energy > 30 ? '#ffe066' : '#ff4d5e'); label('POWER', x);
+      x += bw + 30;
+      txt('💾', x, vy, fs, '#fff', 'left');
+      const slot = small ? 6 : 10, full = S.tank >= G.data_storage;
+      for (let i = 0; i < G.data_storage; i++) {
+        X.fillStyle = i < S.tank ? (full ? '#ff8a3d' : '#4fd1ff') : 'rgba(255,255,255,.14)';
+        X.fillRect(x + 20 + i * slot, vy - 6, slot - 2, 12);
+      }
+      // Sağ: süre, puan, kombo
+      txt(`⏱️ ${Math.max(0, Math.ceil(G.seconds - S.t))}`, W - 10, vy, fs, '#fff', 'right');
+      txt('TIME', W - 10, ly, lab, '#7d8bad', 'right');
+      const sx = W - (small ? 56 : 78);
+      txt(`🔬 ${S.score}`, sx, vy, fs + 1, '#bff5e6', 'right');
+      txt('SCORE', sx, ly, lab, '#7d8bad', 'right');
+      // Dar ekran: hafıza yazısı ile puan arasındaki boşluğa göre yerleşim (kombo her zaman görünsün)
+      X.font = `800 ${fs + 1}px Nunito, system-ui, sans-serif`;
+      const scoreStart = sx - X.measureText(`🔬 ${S.score}`).width;
+      X.font = `800 ${lab}px Nunito, system-ui, sans-serif`;
+      const slotsEnd = x + 20 + G.data_storage * slot;
+      let memText = full ? 'MEMORY FULL!' : 'MEMORY · computer';
+      let memEnd = Math.max(slotsEnd, x + X.measureText(memText).width);
+      if (small && scoreStart - memEnd < 48) { memText = full ? 'FULL!' : 'MEMORY'; memEnd = Math.max(slotsEnd, x + X.measureText(memText).width); }
+      label(memText, x);
+      if (!small || scoreStart - memEnd >= 34) {
+        const cx = small ? (memEnd + scoreStart) / 2 : sx - 110, pop = 1 + S.comboPop * 0.5;
+        X.save(); X.translate(cx, vy); X.scale(pop, pop);
+        txt(`x${S.combo}`, 0, 0, fs + 3, S.combo > 1 ? '#ffb347' : '#5d6b8d');
+        X.restore();
+        txt('COMBO', cx, ly, lab, '#7d8bad');
+      }
     };
-    const drawEnd = () => {
-      space(40);
-      txt(S.reason, W / 2, H * 0.17, clamp(W / 20, 16, 26), '#ffd98a');
-      txt('🔬 SCIENCE SENT HOME', W / 2, H * 0.36, W < 420 ? 13 : 16, '#9fdcff');
-      title(String(S.score), W / 2, H * 0.5, clamp(W / 9, 40, 90), '#22d3a6');
-      txt(S.newBest ? '🏆 NEW BEST!' : `🏆 Your best: ${best}`, W / 2, H * 0.64, 16, '#ffd98a');
-      txt(`💾 ${S.sent} data packets · ⏱️ ${Math.min(G.seconds, Math.round(S.t))} s`, W / 2, H * 0.72, 14, '#c6cfdf');
-      if (mt > 1 && Math.floor(mt * 2) % 2 === 0) title('CLICK / TAP OR SPACE TO FLY AGAIN', W / 2, H * 0.88, clamp(W / 34, 11, 18));
+    const drawIdle = (dt) => {
+      drawScene(mode === 'intro' ? 50 : 30, (Math.sin(mt * 2) + 1) / 2);
+      const size = clamp(Math.min(W, H) * 0.16, 56, 96);
+      drawShip(W * 0.5, H * 0.72 + Math.sin(mt * 2) * 5, Math.sin(mt) * 0.05, size, true);
+      drawParts(dt);
     };
 
     // ---------------- girdi
-    const startIfReady = () => { audio(); if (mode === 'ready' || (mode === 'end' && mt > 1)) setMode('play'); };
     const onKeyDown = (e) => {
       if (KEYMAP[e.key]) { keys[KEYMAP[e.key]] = true; e.preventDefault(); }
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); startIfReady(); }
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (e.target instanceof HTMLButtonElement) return;   // düğme zaten kendi tıklamasını yapar
+        e.preventDefault();
+        if (mode === 'intro' || (mode === 'over' && mt > 1)) startGame();
+      }
     };
     const onKeyUp = (e) => { if (KEYMAP[e.key]) keys[KEYMAP[e.key]] = false; };
     const onBlur = () => { for (const k in keys) keys[k] = false; pointer.on = false; };
@@ -335,7 +594,6 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
     const onDown = (e) => {
       C.focus(); audio();
       if (mode === 'play') { const p = pos(e); pointer.on = true; pointer.x = p.x; pointer.y = p.y; C.setPointerCapture(e.pointerId); }
-      else startIfReady();
     };
     const onMove = (e) => { if (pointer.on) { const p = pos(e); pointer.x = p.x; pointer.y = p.y; } };
     const onUp = () => { pointer.on = false; };
@@ -353,9 +611,8 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       const dt = Math.min(0.05, raw); mt += Math.min(raw, 2);
       X.save();
       if (shake > 0) { X.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2); shake = Math.max(0, shake - dt * 14); }
-      if (mode === 'play') { update(dt); if (mode === 'play') drawGame(dt); }
-      if (mode === 'ready') drawReady();
-      else if (mode === 'end') drawEnd();
+      if (mode === 'play') { update(dt); if (mode === 'play') drawGame(dt); else drawIdle(dt); }
+      else drawIdle(dt);
       X.restore();
       raf = requestAnimationFrame(frame);
     };
@@ -372,16 +629,23 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       C.removeEventListener('pointerup', onUp);
       C.removeEventListener('pointercancel', onUp);
     };
-  }, [G, craft, target, player]);
+  }, [G, craft, target]);
 
+  const report = () => onExit(sessionBest.current);
   return (
     <motion.div className="fixed inset-0 z-50 bg-black" initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }}>
       <canvas ref={canvasRef} tabIndex={0} className="block h-full w-full cursor-crosshair touch-none outline-none" />
-      <button onClick={() => onExit(scoreRef.current)}
-              className="absolute bottom-3 right-3 rounded-full border border-white/15 bg-[#0b1226]/85 px-4 py-2 text-sm font-bold text-white hover:bg-[#16224a]">
-        📋 Mission report ➜
-      </button>
+      <AnimatePresence>
+        {screen === 'intro' && <Intro key="intro" G={G} target={target} best={bestRef.current} onStart={() => ctl.current.start()} />}
+        {screen === 'end' && result && <EndCard key="end" result={result} server={server} onAgain={() => ctl.current.start()} onReport={report} />}
+      </AnimatePresence>
+      {screen === 'play' && (
+        <button onClick={report}
+                className="absolute bottom-3 right-3 rounded-full border border-white/15 bg-[#0b1226]/85 px-4 py-2 text-sm font-bold text-white hover:bg-[#16224a]">
+          📋 Mission report ➜
+        </button>
+      )}
     </motion.div>
   );
 }

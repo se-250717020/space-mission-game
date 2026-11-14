@@ -14,6 +14,8 @@ Uç noktalar (endpoint):
     POST /api/design        → tasarımda bir değişiklik yap; göstergeler, uyarılar, puanlar, çizimler
     POST /api/launch        → fırlatma simülasyonu + rapor + mini oyun ayarları (+ skor tablosuna kayıt)
     GET  /api/leaderboard   → skor tablosu
+    POST /api/flight-score  → uçuş mini oyunu puanını kaydet; sıralama + ilk 5 pilot
+    GET  /api/flight-leaderboard → pilot (uçuş) skor tablosu
 """
 
 import json
@@ -35,6 +37,7 @@ import calculations as calc  # noqa: E402
 import data  # noqa: E402
 
 LEADERBOARD_FILE = Path(__file__).with_name("leaderboard.json")
+FLIGHT_FILE = Path(__file__).with_name("flight_scores.json")      # pilot skorları (GitHub'a gitmez)
 _leaderboard_lock = threading.Lock()
 
 # Tabloların JSON'daki adları (React bu anahtarlarla okur)
@@ -83,6 +86,13 @@ class LaunchRequest(BaseModel):
     save_score: bool = True
 
 
+class FlightScoreRequest(BaseModel):
+    selection: dict[str, Any]
+    player_name: str = "Astronaut"
+    score: int = 0
+    packets: int = 0
+
+
 # ----------------------------------------------------------------
 # Yardımcılar
 # ----------------------------------------------------------------
@@ -93,11 +103,16 @@ def _normalize(selection):
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-def _load_leaderboard():
+def _load_json_list(path):
     try:
-        return json.loads(LEADERBOARD_FILE.read_text(encoding="utf-8"))
+        rows = json.loads(path.read_text(encoding="utf-8"))
+        return rows if isinstance(rows, list) else []
     except (OSError, ValueError):
         return []
+
+
+def _load_leaderboard():
+    return _load_json_list(LEADERBOARD_FILE)
 
 
 def _save_leaderboard_entry(entry):
@@ -230,3 +245,30 @@ def launch(req: LaunchRequest):
 @app.get("/api/leaderboard")
 def leaderboard(mission: Optional[str] = None, difficulty: Optional[str] = None, limit: int = 10):
     return calc.rank_leaderboard(_load_leaderboard(), mission, difficulty, max(1, min(limit, 50)))
+
+
+@app.post("/api/flight-score")
+def flight_score(req: FlightScoreRequest):
+    """Uçuş mini oyunu puanı: kaydedilir (skor tablosu açık zorluklarda ve puan > 0 ise),
+    oyuncunun sırası, toplam pilot sayısı ve ilk 5 pilot döner."""
+    selection = _normalize(req.selection)
+    name = (req.player_name or "Astronaut").strip()[:24] or "Astronaut"
+    entry = calc.flight_score_entry(selection, name, req.score, req.packets)
+    saved = bool(data.DIFFICULTIES[selection["difficulty"]]["leaderboard"]) and entry["score"] > 0
+    with _leaderboard_lock:
+        entries = _load_json_list(FLIGHT_FILE)
+        if saved:
+            entries.append(entry)
+            FLIGHT_FILE.write_text(json.dumps(entries[-1000:], indent=1), encoding="utf-8")
+    ranked = calc.rank_flight_scores(entries, None, len(entries) + 1)
+    if saved:
+        rank = next(i for i, e in enumerate(ranked) if e is entry) + 1
+    else:
+        rank = sum(1 for e in ranked if e.get("score", 0) > entry["score"]) + 1
+    return {"entry": entry, "saved": saved, "rank": rank, "total": len(ranked) if saved else len(ranked) + 1,
+            "top": ranked[:5]}
+
+
+@app.get("/api/flight-leaderboard")
+def flight_leaderboard(mission: Optional[str] = None, limit: int = 10):
+    return calc.rank_flight_scores(_load_json_list(FLIGHT_FILE), mission, max(1, min(limit, 50)))

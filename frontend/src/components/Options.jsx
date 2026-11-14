@@ -17,6 +17,8 @@ export default function Options({ settings, setSettings, onBack }) {
       <div className="space-y-3">
         <Toggle on={settings.sound} label="🔊 Sound" sub="Engine roar, countdown voice and game sounds"
                 onClick={() => { set({ sound: !settings.sound }); setTimeout(() => { audio(); SFX.pick(); }, 50); }} />
+        <Toggle on={settings.music ?? true} label="🎵 Music" sub="Calm space music in the background"
+                onClick={() => { audio(); set({ music: !(settings.music ?? true) }); }} />
         <label className="block rounded-xl border border-line bg-void/50 p-4">
           <span className="flex justify-between font-extrabold"><span>🎚️ Volume</span><span className="font-mono text-cyan">{settings.volume}</span></span>
           <input type="range" min="0" max="100" value={settings.volume} className="mt-2 w-full accent-[#4fd1ff]"

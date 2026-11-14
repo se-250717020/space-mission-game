@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { postDesign, postLaunch } from '../api.js';
-import { audio, primeSpeech, SFX } from '../sound.js';
-import { CHECK_WORDS, DELTA_WORDS } from '../words.js';
+import { audio, primeSpeech, setMusicMode, SFX } from '../sound.js';
+import { CHECK_WORDS, DELTA_WORDS, FIX_TARGETS } from '../words.js';
 import Workshop from './Workshop.jsx';
 import Dashboard from './Dashboard.jsx';
 import InfoPanel from './InfoPanel.jsx';
 import LaunchSequence from './LaunchSequence.jsx';
 import MiniGame from './MiniGame.jsx';
 import Report from './Report.jsx';
+import Coach from './Coach.jsx';
 
 // Oyun ekranı: 3 kolon (atölye · sahne + LAUNCH · bilgi). Tüm sayılar backend'den (calculations.py) gelir.
 export default function GameScreen({ gameData, player, difficulty, settings, setSettings, onMenu, go }) {
@@ -24,6 +25,19 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
   const queue = useRef(Promise.resolve());
   const toastTimer = useRef(null);
   const launchingRef = useRef(false);
+  const [jump, setJump] = useState(null);             // "Fix it ➜" → atölyede açılacak yer
+  // İlk oyunda kısa rehber çıkar; sonra üst çubuktaki "?" ile açılır
+  const [guide, setGuide] = useState(() => { try { return !localStorage.getItem('smg_seen_guide'); } catch { return false; } });
+  const closeGuide = useCallback(() => {
+    setGuide(false);
+    try { localStorage.setItem('smg_seen_guide', '1'); } catch { /* depolama kapalı */ }
+  }, []);
+  const fix = useCallback((check) => {
+    const target = FIX_TARGETS[check];
+    if (!target) return;
+    audio(); SFX.click();
+    setJump((j) => ({ ...target, check, n: (j?.n || 0) + 1 }));
+  }, []);
 
   // Aynı bilgi tekrar gelirse (fare aynı kartın üstünde gezerken) state değişmez → yeniden çizim yok
   const focusOn = useCallback((next) => {
@@ -56,6 +70,10 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
     toastTimer.current = setTimeout(() => setToast(null), problems.length ? 4500 : 2800);
   }, [gameData]);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  // Müzik: fırlatmada susar (motor duyulsun), uçuş oyununda ritimli, diğer zamanlarda sakin lobi müziği
+  useEffect(() => { setMusicMode(phase === 'launch' ? 'off' : phase === 'game' ? 'flight' : 'menu'); }, [phase]);
+  useEffect(() => () => setMusicMode('menu'), []);
 
   // Değişiklikler sırayla gönderilir (hızlı tıklamada biri diğerini ezmesin).
   // useCallback: fonksiyon her çizimde yeniden oluşmaz, React.memo'lu paneller boşuna çizilmez.
@@ -113,6 +131,7 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
         <div className="ml-auto flex items-center gap-2 text-sm">
           <span className="rounded-full bg-panel2 px-3 py-1 font-bold">👩‍🚀 {player}</span>
           <span className="rounded-full bg-panel2 px-3 py-1 font-bold">{diff.emoji} {diff.name}</span>
+          <button onClick={() => { SFX.click(); setGuide(true); }} className="grid h-7 w-7 place-items-center rounded-full bg-panel2 font-black text-cyan" aria-label="How to play">?</button>
           <button onClick={() => setSettings({ ...settings, sound: !settings.sound })}
                   className="rounded-full bg-panel2 px-3 py-1" aria-label="Sound on or off">{settings.sound ? '🔊' : '🔇'}</button>
         </div>
@@ -128,9 +147,9 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
           tüm ekranı yeniden boyuyordu; zaten fırlatma ekranı üstünü tamamen kapatıyor) */}
       <motion.main animate={{ scale: away ? 0.96 : 1, opacity: away ? 0.4 : 1 }}
                    transition={{ duration: 0.6, ease: 'easeInOut' }} style={{ willChange: away ? 'transform, opacity' : 'auto' }}
-                   className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-3 lg:content-stretch lg:grid-cols-[minmax(300px,25rem)_minmax(0,1fr)_minmax(280px,23rem)] lg:overflow-hidden">
-        <Workshop gameData={gameData} state={state} change={change} setFocus={focusOn} />
-        <Dashboard gameData={gameData} state={state} onLaunch={launch} launching={launching} />
+                   className="stagger-in grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-3 lg:content-stretch lg:grid-cols-[minmax(300px,25rem)_minmax(0,1fr)_minmax(280px,23rem)] lg:overflow-hidden">
+        <Workshop gameData={gameData} state={state} change={change} setFocus={focusOn} jump={jump} />
+        <Dashboard gameData={gameData} state={state} onLaunch={launch} launching={launching} onFix={fix} />
         <InfoPanel gameData={gameData} state={state} focus={focus} />
       </motion.main>
 
@@ -148,6 +167,8 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
         )}
       </AnimatePresence>
 
+      <AnimatePresence>{guide && phase === 'design' && <Coach key="coach" onClose={closeGuide} />}</AnimatePresence>
+
       {/* Fırlatma → mini oyun → rapor */}
       <AnimatePresence>
         {phase === 'launch' && flight && (
@@ -156,7 +177,8 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
         )}
         {phase === 'game' && flight && (
           <MiniGame key="game" params={flight.minigame} craft={flight.art.craft} target={gameData.missions[design.mission].target}
-                    player={player} onExit={(score) => { setGameScore(score); setPhase('report'); }} />
+                    player={player} selection={design}
+                    onExit={(best) => { setGameScore((prev) => (best && (!prev || best.score >= prev.score) ? best : prev)); setPhase('report'); }} />
         )}
         {phase === 'report' && flight && (
           <Report key="report" flight={flight} gameData={gameData} gameScore={gameScore}

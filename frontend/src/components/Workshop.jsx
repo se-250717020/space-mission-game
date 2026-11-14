@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { svgUrl } from '../api.js';
 import { SFX } from '../sound.js';
@@ -69,9 +69,11 @@ const PartCard = memo(function PartCard({ cat, id, part, selected, ratings, rock
   && a.rocketSrc === b.rocketSrc && a.typeText === b.typeText && a.onPick === b.onPick && a.onFocus === b.onFocus
   && sameRatings(a.ratings, b.ratings));
 
-function Workshop({ gameData, state, change, setFocus }) {
+function Workshop({ gameData, state, change, setFocus, jump }) {
   const [tab, setTab] = useState('mission');
   const [group, setGroup] = useState('science');
+  const [attn, setAttn] = useState(null);   // "Fix it" sonrası parlayan sekme / grup (kısa süre)
+  const sectionRef = useRef(null);
   const design = state.selection;
   const mission = gameData.missions[design.mission];
   const advanced = gameData.difficulties[design.difficulty].advanced_parts;
@@ -94,6 +96,28 @@ function Workshop({ gameData, state, change, setFocus }) {
   }, [change]);
   const onFocus = useCallback((cat, id) => setFocus({ category: cat, id }), [setFocus]);
 
+  // "Fix it ➜": mühendisin işaret ettiği sekme ve parça grubu açılır, kısa süre parlar,
+  // telefonda atölye ekrana kaydırılır (masaüstünde kolon zaten görünür, sadece başa sarılır)
+  useEffect(() => {
+    if (!jump) return;
+    setTab(jump.tab);
+    if (jump.group) setGroup(jump.group);
+    const g = jump.group && groups.find((x) => x.id === jump.group);
+    setFocus({ category: jump.tab === 'parts' ? (g?.cats[0] || 'instruments') : jump.tab });
+    setAttn({ ...jump });
+    const el = sectionRef.current;
+    if (el) {
+      el.scrollTop = 0;
+      const r = el.getBoundingClientRect();
+      if (r.top < 0 || r.top > window.innerHeight * 0.6) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    const t = setTimeout(() => setAttn(null), 2600);
+    return () => clearTimeout(t);
+    // sadece yeni bir "Fix it" basışında (jump.n değişince) çalışır
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.n]);
+  const glow = (on) => on && <span key={attn.n} className="attention" aria-hidden="true" />;
+
   const partList = (cat) => {
     const table = gameData.parts[cat];
     const multi = cat === 'instruments';
@@ -114,13 +138,14 @@ function Workshop({ gameData, state, change, setFocus }) {
   };
 
   return (
-    <section className="metal thin-scroll flex flex-col rounded-2xl lg:min-h-0 lg:overflow-y-auto">
+    <section ref={sectionRef} className="metal thin-scroll flex scroll-mt-14 flex-col rounded-2xl lg:min-h-0 lg:overflow-y-auto">
       {/* Sekmeler */}
       <div className="sticky top-0 z-10 flex gap-1 border-b border-line bg-[#0c1530] p-2">
         {TABS.map(([id, label]) => (
           <button key={id} onClick={() => { SFX.click(); setTab(id); setFocus({ category: id === 'mission' ? 'mission' : id === 'rocket' ? 'rocket' : activeGroup.cats[0] }); }}
                   className={`relative flex-1 rounded-lg px-2 py-2 text-sm font-extrabold ${tab === id ? 'text-white' : 'text-muted hover:text-white'}`}>
             {tab === id && <motion.span layoutId="ws-tab" className="absolute inset-0 rounded-lg bg-nasa/80" transition={{ type: 'spring', stiffness: 420, damping: 32 }} />}
+            {glow(attn && attn.tab === id && !attn.group)}
             <span className="relative">{label}</span>
           </button>
         ))}
@@ -191,7 +216,8 @@ function Workshop({ gameData, state, change, setFocus }) {
               <div className="mb-3 flex flex-wrap gap-1">
                 {groups.map((g) => (
                   <button key={g.id} onClick={() => { SFX.click(); setGroup(g.id); setFocus({ category: g.cats[0] }); }}
-                          className={`rounded-full px-3 py-1 text-sm font-bold ${activeGroup.id === g.id ? 'bg-cyan text-void' : 'bg-panel2 text-muted hover:text-white'}`}>
+                          className={`relative rounded-full px-3 py-1 text-sm font-bold ${activeGroup.id === g.id ? 'bg-cyan text-void' : 'bg-panel2 text-muted hover:text-white'}`}>
+                    {glow(attn && attn.group === g.id)}
                     {g.label}
                   </button>
                 ))}

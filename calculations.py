@@ -94,6 +94,9 @@ HERKESE AÇIK FONKSİYONLAR (app.py bunları kullanır):
     part_ratings(category, selection=None) -> {part_id: {özellik: 1|2|3}} (sayısız karşılaştırma;
                                             özellikler RATING_FIELDS'te)
     minigame_params(selection)           -> MINIGAME sözlüğü (fırlatma sonrası uçuş mini oyunu)
+    flight_rank(score)                   -> {"min", "name", "icon"} (uçuş puanının rütbesi)
+    flight_score_entry(selection, player_name, score, packets) -> FLIGHT sözlüğü (pilot skor satırı)
+    rank_flight_scores(entries, mission=None, limit=10) -> sıralı FLIGHT listesi
 
 REQUIREMENTS sözlüğü:
     {"budget", "development_months", "radiation_level", "science_target",
@@ -160,7 +163,13 @@ WARNING sözlüğü (design_warnings):
 
 MINIGAME sözlüğü (minigame_params):
     {"agility", "energy_drain", "lives", "data_storage", "downlink_rate", "packet_points",
-     "asteroid_rate", "seconds", "ratings": {"agility", "energy", "lives", "data"} (1-3)}
+     "asteroid_rate", "seconds", "ratings": {"agility", "energy", "lives", "data"} (1-3),
+     "zone_send_rate", "max_combo", "combo_step", "full_load_bonus",
+     "ranks": [{"min", "name", "icon"}]}
+
+FLIGHT sözlüğü (flight_score_entry):
+    {"name", "mission", "mission_name", "difficulty", "score", "packets", "rank_name",
+     "rank_icon", "code"}
 
 IMPACT sözlüğü (change_impact):
     {"headline", "changed": [{"key", "label", "from", "to"}],
@@ -1654,6 +1663,17 @@ def change_impact(before, after):
 # ----------------------------------------------------------------
 MINIGAME_SECONDS = 60          # bir uçuşun süresi
 MINIGAME_BASE_STORAGE = 5      # sıkıştırmasız bilgisayarın hafızasına sığan veri paketi
+MINIGAME_ZONE_BOOST = 4        # "Science Run": veri sadece Dünya'nın gönderme bölgesinde yollanır, anten hızı x4
+MINIGAME_MAX_COMBO = 5         # çarpışmadan art arda gönderilen paketlerle puan çarpanı en fazla x5
+MINIGAME_COMBO_STEP = 5        # her 5 pakette çarpan +1
+MINIGAME_FULL_LOAD_BONUS = 0.5 # hafıza TAMAMEN doluyken bölgeye gelince: paket puanı x hafıza x 0.5 bonus
+MINIGAME_MAX_PACKETS = 300     # skor tablosu güvenliği: bir uçuşta gönderilebilecek paket üst sınırı
+FLIGHT_RANKS = [               # uçuş puanı rütbeleri (en düşükten)
+    {"min": 0, "name": "Cadet", "icon": "🧑‍🎓"},
+    {"min": 250, "name": "Pilot", "icon": "🧑‍✈️"},
+    {"min": 700, "name": "Commander", "icon": "🧑‍🚀"},
+    {"min": 1400, "name": "NASA Legend", "icon": "🏅"},
+]
 
 
 def _clamp(value, low, high):
@@ -1706,7 +1726,53 @@ def minigame_params(selection):
             "lives": _feel_rating(lives, 3, 5),
             "data": _feel_rating(downlink_rate, 0.3, 0.7),
         },
+        "zone_send_rate": round(downlink_rate * MINIGAME_ZONE_BOOST, 2),
+        "max_combo": MINIGAME_MAX_COMBO,
+        "combo_step": MINIGAME_COMBO_STEP,
+        "full_load_bonus": MINIGAME_FULL_LOAD_BONUS,
+        "ranks": [dict(r) for r in FLIGHT_RANKS],
     }
+
+
+def flight_rank(score):
+    """Uçuş puanının rütbesi: FLIGHT_RANKS içinden puanın ulaştığı en yüksek basamak."""
+    best = FLIGHT_RANKS[0]
+    for rank in FLIGHT_RANKS:
+        if score >= rank["min"]:
+            best = rank
+    return dict(best)
+
+
+def flight_score_entry(selection, player_name, score, packets):
+    """Pilot skor tablosuna yazılacak satır. Uçuş puanı tarayıcıda (oyun fiziği) hesaplanır;
+    burada tasarıma göre mümkün olan en yüksek değere kırpılır (hile / hatalı istek koruması)."""
+    selection = normalize_selection(selection)
+    game = minigame_params(selection)
+    packets = int(_clamp(int(packets or 0), 0, MINIGAME_MAX_PACKETS))
+    # En iyi durum: her paket en yüksek çarpanla + her hafıza dolusunda tam yük bonusu
+    loads = packets / max(1, game["data_storage"]) + 1
+    cap = game["packet_points"] * (packets * game["max_combo"]
+                                   + loads * game["data_storage"] * game["full_load_bonus"] * game["max_combo"])
+    score = int(_clamp(int(score or 0), 0, int(cap)))
+    rank = flight_rank(score)
+    return {
+        "name": (player_name or "Anonymous").strip()[:30] or "Anonymous",
+        "mission": selection["mission"],
+        "mission_name": _mission(selection)["name"],
+        "difficulty": selection.get("difficulty") or DEFAULT_DIFFICULTY,
+        "score": score,
+        "packets": packets,
+        "rank_name": rank["name"],
+        "rank_icon": rank["icon"],
+        "code": encode_design(selection),
+    }
+
+
+def rank_flight_scores(entries, mission=None, limit=10):
+    """Pilot skor tablosunu sıralar: önce uçuş puanı, sonra gönderilen paket sayısı."""
+    rows = [e for e in entries if mission is None or e.get("mission") == mission]
+    rows.sort(key=lambda e: (e.get("score", 0), e.get("packets", 0)), reverse=True)
+    return rows[:limit]
 
 
 # ----------------------------------------------------------------
@@ -1746,6 +1812,13 @@ if __name__ == "__main__":
     game = minigame_params(example)
     assert 1 <= game["lives"] <= 5 and game["data_storage"] >= 1 and game["seconds"] > 0
     assert set(game["ratings"]) == {"agility", "energy", "lives", "data"}
+    assert game["zone_send_rate"] > game["downlink_rate"] and game["ranks"][0]["min"] == 0
+    flight = flight_score_entry(example, "Tester", 10 ** 9, 40)
+    assert 0 < flight["score"] < 10 ** 9, "flight score must be capped"
+    assert flight_score_entry(example, "Tester", -5, -1)["score"] == 0
+    assert flight_rank(0)["name"] == "Cadet" and flight_rank(10 ** 6)["name"] == FLIGHT_RANKS[-1]["name"]
+    ranked = rank_flight_scores([{"score": 5, "packets": 1}, {"score": 9, "packets": 2}, {"score": 9, "packets": 4}])
+    assert [e["packets"] for e in ranked] == [4, 2, 1]
     print("Mini game:", {k: v for k, v in game.items() if k != "ratings"})
 
     print(f"Score: {r['score']}  Grade: {r['grade']}  Success: {r['success']}  "

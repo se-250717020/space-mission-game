@@ -15,9 +15,9 @@ export default function Report({ flight, gameData, gameScore, onWorkshop, onMenu
   const item = { hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0 } };
 
   return (
-    <motion.div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-3 backdrop-blur-md sm:p-6"
+    <motion.div className="fixed inset-0 z-50 overflow-y-auto bg-[#030611]/85 p-3 sm:p-6"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <motion.div className="metal mx-auto max-w-3xl rounded-3xl p-5 sm:p-7"
+      <motion.div className="glass relative mx-auto max-w-3xl rounded-3xl p-5 sm:p-7"
                   initial={{ y: 60, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }}
                   transition={{ type: 'spring', stiffness: 200, damping: 22 }}>
         <div className="flex flex-wrap items-center gap-4">
@@ -33,7 +33,11 @@ export default function Report({ flight, gameData, gameScore, onWorkshop, onMenu
           <div className="text-right">
             <div className="font-display text-4xl font-black text-cyan">{ev.score}</div>
             <div className="text-xs text-muted">/ 100 points</div>
-            {gameScore !== null && <div className="mt-1 text-sm">🎮 Flight: <b className="text-ok">{gameScore}</b> 🔬</div>}
+            {gameScore && (
+              <div className="mt-1 text-sm">🎮 Flight: <b className="text-ok">{gameScore.score}</b> 🔬
+                <span className="block text-xs text-amber">{gameScore.rankIcon} {gameScore.rankName}{gameScore.place ? ` · #${gameScore.place} of ${gameScore.total}` : ''}</span>
+              </div>
+            )}
           </div>
         </div>
 

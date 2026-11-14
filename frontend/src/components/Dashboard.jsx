@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CHECK_WORDS, LEVEL_COLORS, MAIN_GAUGE_WORDS } from '../words.js';
+import { CHECK_WORDS, FIX_TARGETS, LEVEL_COLORS, MAIN_GAUGE_WORDS } from '../words.js';
 
 // Kaynak çubuğu: sadece kendi sayıları değişince yeniden çizilir (React.memo, düz değer prop'ları).
 // Doluluk width yerine transform: scaleX ile anime edilir → sayfa yerleşimi (layout) hiç yeniden hesaplanmaz.
@@ -9,9 +9,9 @@ const GaugeBar = memo(function GaugeBar({ id, icon, label, level, fill, text }) 
   const color = LEVEL_COLORS[level];
   return (
     <div className="rounded-xl border border-line bg-void/50 px-3 py-2" title={text}>
-      <div className="flex justify-between text-sm">
-        <b>{name}</b>
-        <span style={{ color }}>{level === 'off' ? '💤 not counted' : words[level]}</span>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
+        <b className="whitespace-nowrap">{name}</b>
+        <span className="text-xs font-bold" style={{ color }}>{level === 'off' ? '💤 not counted' : words[level]}</span>
       </div>
       <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-white/10">
         <motion.div className="h-full w-full origin-left rounded-full transition-colors duration-500" style={{ backgroundColor: color }}
@@ -28,13 +28,46 @@ const Scene = memo(function Scene({ svg }) {
   return <div className="scene relative h-[240px] shrink-0 sm:h-[320px] lg:h-auto lg:min-h-0 lg:flex-1 lg:shrink" dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
-const Tip = memo(function Tip({ id, icon, title, check }) {
+// Sistem kontrol şeridi: her kontrol bir ışık (yeşil = tamam, kırmızı = sorun). Kırmızıya basınca
+// atölyede ilgili yer açılır. sig ("budget1,mass0,...") metin olduğu için içerik aynıysa yeniden çizilmez.
+const SystemsStrip = memo(function SystemsStrip({ sig, onFix }) {
+  const items = sig ? sig.split(',').map((s) => ({ id: s.slice(0, -1), ok: s.endsWith('1') })) : [];
+  const ok = items.filter((x) => x.ok).length;
+  const all = items.length > 0 && ok === items.length;
+  return (
+    <div className="rounded-xl border border-line bg-void/50 px-3 py-2">
+      <div className="flex items-center justify-between text-sm">
+        <b>{all ? '🟢 All systems GO!' : '🚦 Systems check'}</b>
+        <span className="text-muted"><b className={`font-display ${all ? 'text-ok' : 'text-white'}`}>{ok}</b>/{items.length} GO</span>
+      </div>
+      <div className="mt-1.5 flex gap-1">
+        {items.map((x) => (
+          <button key={x.id} onClick={() => !x.ok && onFix(x.id)} disabled={x.ok}
+                  title={`${CHECK_WORDS[x.id]?.[0]} ${x.ok ? CHECK_WORDS[x.id]?.[1] : `${CHECK_WORDS[x.id]?.[2]} (tap to fix)`}`}
+                  aria-label={x.ok ? CHECK_WORDS[x.id]?.[1] : `${CHECK_WORDS[x.id]?.[2]}, fix it`}
+                  className={`relative grid h-7 min-w-0 flex-1 place-items-center rounded-md text-[13px] transition-colors disabled:cursor-default ${x.ok
+                    ? 'bg-ok/20' : 'seg-alert bg-bad/35 hover:bg-bad/55'}`}>
+            <span className={x.ok ? 'opacity-80' : ''}>{CHECK_WORDS[x.id]?.[0]}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+const Tip = memo(function Tip({ id, icon, title, check, onFix }) {
   return (
     <AnimatePresence mode="wait">
       <motion.div key={id || 'ok'} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-                  className="flex-1 rounded-xl bg-panel2 px-3 py-2 text-sm">
+                  className="flex flex-1 items-center gap-2 rounded-xl bg-panel2 px-3 py-2 text-sm">
         {id ? (
-          <><b>{icon} {title}</b> <span className="text-muted">{CHECK_WORDS[check]?.[3] || ''}</span></>
+          <>
+            <span className="min-w-0 flex-1"><b>🧑‍🔧 {icon} {title}</b> <span className="text-muted">{CHECK_WORDS[check]?.[3] || ''}</span></span>
+            {FIX_TARGETS[check] && (
+              <motion.button onClick={() => onFix(check)} whileHover={{ x: 2 }} whileTap={{ scale: 0.94 }}
+                             className="shrink-0 rounded-lg bg-cyan px-3 py-1.5 font-extrabold text-void">Fix it ➜</motion.button>
+            )}
+          </>
         ) : <b className="text-ok">🧑‍🚀 Engineer: Looks great! Ready to fly. 🚀</b>}
       </motion.div>
     </AnimatePresence>
@@ -51,13 +84,10 @@ const LaunchButton = memo(function LaunchButton({ onLaunch, launching }) {
 });
 
 // Orta kolon: puan şeridi, atölye sahnesi (roket + uzay aracı), 4 kaynak çubuğu, LAUNCH
-function Dashboard({ gameData, state, onLaunch, launching }) {
+function Dashboard({ gameData, state, onLaunch, launching, onFix }) {
   const design = state.selection;
   const ev = state.evaluation;
-  const { activeCount, passedCount } = useMemo(() => {
-    const active = ev.checks.filter((c) => c.active);
-    return { activeCount: active.length, passedCount: active.filter((c) => c.passed).length };
-  }, [ev.checks]);
+  const sig = useMemo(() => ev.checks.filter((c) => c.active).map((c) => `${c.id}${c.passed ? 1 : 0}`).join(','), [ev.checks]);
   const gauges = useMemo(() => state.gauges.filter((g) => g.main), [state.gauges]);
   const tip = state.warnings.find((w) => w.level === 'danger') || state.warnings.find((w) => w.level === 'warning');
   const twist = design.twist ? gameData.design_twists[design.twist] : null;
@@ -71,7 +101,6 @@ function Dashboard({ gameData, state, onLaunch, launching }) {
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="rounded-full bg-panel2 px-3 py-1 font-bold">{mission.emoji} {mission.name}</span>
         <span className="ml-auto rounded-full bg-panel2 px-3 py-1">⭐ Score <b className="font-display text-cyan">{ev.score}</b><span className="text-muted">/100</span></span>
-        <span className="rounded-full bg-panel2 px-3 py-1">✅ Systems GO <b className="font-display text-ok">{passedCount}</b><span className="text-muted">/{activeCount}</span></span>
       </div>
 
       {/* Sürpriz kartı: yükseklik (height) yerine opacity + y anime edilir */}
@@ -87,6 +116,8 @@ function Dashboard({ gameData, state, onLaunch, launching }) {
       {/* Sahne: roket rampada + vitrinde uzay aracı (çizim backend'de artwork.py'den) */}
       <Scene svg={state.art.scene} />
 
+      <SystemsStrip sig={sig} onFix={onFix} />
+
       {/* Kaynak çubukları */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {gauges.map((g) => (
@@ -95,8 +126,8 @@ function Dashboard({ gameData, state, onLaunch, launching }) {
       </div>
 
       {/* Mühendis ipucu + LAUNCH */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Tip id={tip?.id} icon={tip?.icon} title={tip?.title} check={tip?.check} />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:flex-col lg:items-stretch 2xl:flex-row 2xl:items-center">
+        <Tip id={tip?.id} icon={tip?.icon} title={tip?.title} check={tip?.check} onFix={onFix} />
         <LaunchButton onLaunch={onLaunch} launching={launching} />
       </div>
     </section>

@@ -38,8 +38,9 @@ button:disabled { cursor: not-allowed; }
   background:
     radial-gradient(circle at 10px 10px, #3a4a70 2px, transparent 3px),
     radial-gradient(circle at calc(100% - 10px) 10px, #3a4a70 2px, transparent 3px),
-    linear-gradient(180deg, #0f1932 0%, #0a1226 100%);
+    linear-gradient(180deg, #111d3c 0%, #0a1226 100%);
   border: 1px solid var(--color-line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 12px 32px -14px rgba(0,0,0,.65);
 }
 .hazard {
   background: repeating-linear-gradient(-45deg, #ffb347 0 10px, #11182c 10px 20px);
@@ -92,6 +93,123 @@ button:disabled { cursor: not-allowed; }
 .twinkle { animation: twinkle var(--d, 2s) ease-in-out infinite; }
 @keyframes twinkle { 0%, 100% { opacity: .15; } 50% { opacity: 1; } }
 
+/* ================= ORTAK UZAY TEMASI (menü sayfaları) =================
+   Kural: tüm sürekli animasyonlar sadece transform / opacity (GPU'da, yeniden boyama yok). */
+.backdrop {
+  position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -10%, #16275a 0%, #070d22 45%, #050914 75%);
+}
+.backdrop.is-paused, .backdrop.is-paused * { animation-play-state: paused !important; }
+.star-layer {
+  position: absolute; left: 0; right: 0; top: calc(var(--tile) * -1); bottom: 0;
+  background-repeat: repeat; will-change: transform;
+  animation: drift var(--dur) linear infinite;
+}
+.star-layer.tw { animation: drift var(--dur) linear infinite, starPulse var(--tw) ease-in-out infinite alternate; }
+@keyframes drift { to { transform: translate3d(0, var(--tile), 0); } }
+@keyframes starPulse { from { opacity: .3; } to { opacity: 1; } }
+.nebula { position: absolute; border-radius: 50%; will-change: transform; animation: nebula 40s ease-in-out infinite alternate; }
+.n1 { width: 75vmax; height: 75vmax; left: -28vmax; top: -32vmax; background: radial-gradient(closest-side, rgba(98,70,220,.30), transparent); }
+.n2 { width: 65vmax; height: 65vmax; right: -24vmax; bottom: -30vmax; background: radial-gradient(closest-side, rgba(0,160,215,.22), transparent); animation-duration: 48s; }
+.n3 { width: 42vmax; height: 42vmax; left: 42%; top: 30%; background: radial-gradient(closest-side, rgba(252,61,33,.10), transparent); animation-duration: 56s; }
+@keyframes nebula { to { transform: translate3d(4vmax, 3vmax, 0) scale(1.12); } }
+.shooting {
+  position: absolute; top: 14%; left: 72%; width: 150px; height: 2px; border-radius: 2px; opacity: 0;
+  background: linear-gradient(90deg, #fff, rgba(79,209,255,.6) 30%, rgba(79,209,255,0));
+  animation: shoot 12s linear 3s infinite;
+}
+.shooting.s2 { top: 34%; left: 96%; width: 110px; animation-duration: 19s; animation-delay: 9s; }
+@keyframes shoot {
+  0% { opacity: 0; transform: rotate(-28deg) translateX(0); }
+  1% { opacity: 1; }
+  6% { opacity: 0; transform: rotate(-28deg) translateX(-680px); }
+  100% { opacity: 0; transform: rotate(-28deg) translateX(-680px); }
+}
+
+/* Cam görünümlü kart (backdrop-blur YOK: her karede arkasını bulanıklaştırmak pahalı) */
+.glass {
+  background: linear-gradient(160deg, rgba(24,40,82,.86), rgba(8,14,32,.92));
+  border: 1px solid rgba(130,170,255,.18);
+  box-shadow: 0 30px 80px -24px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.07);
+}
+.glass::before {
+  content: ''; position: absolute; left: 12%; right: 12%; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(79,209,255,.8), transparent);
+}
+
+/* Başlık */
+.hero-title {
+  background: linear-gradient(180deg, #ffffff 10%, #cdeeff 55%, #6fd8ff 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 22px rgba(79,209,255,.28));
+}
+.hero-accent { background: linear-gradient(180deg, #ffb08a, #fc3d21 70%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* BAŞLA düğmesi + üstünden geçen ışık */
+.start-btn { background: linear-gradient(180deg, #ff7a45 0%, #fc3d21 55%, #d92a10 100%); box-shadow: 0 0 18px rgba(252,61,33,.45), inset 0 1px 0 rgba(255,255,255,.35); }
+.shine {
+  position: absolute; top: 0; bottom: 0; left: -35%; width: 28%; will-change: transform;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+  animation: shine 3.4s ease-in-out infinite;
+}
+@keyframes shine { 0%, 50% { transform: skewX(-20deg) translateX(0); } 100% { transform: skewX(-20deg) translateX(620%); } }
+
+/* Gezegen + yörünge sahnesi */
+.orbit-spin { animation: spin 13s linear infinite; }
+.orbit-craft { animation: counterSpin 13s linear infinite; }
+.orbit-z { animation: orbitZ 13s steps(1, end) infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Dönen çerçeveyi geri çevirir ve basıklığı (scaleY .34) düzeltir: uydu dik ve normal boyda kalır */
+@keyframes counterSpin {
+  from { transform: translate(-50%, -50%) rotate(0deg) scaleY(2.94) rotate(14deg); }
+  to { transform: translate(-50%, -50%) rotate(-360deg) scaleY(2.94) rotate(14deg); }
+}
+/* Yörüngenin üst yarısında uydu gezegenin arkasında (z 1), alt yarısında önünde (z 3) */
+@keyframes orbitZ { 0% { z-index: 1; } 25% { z-index: 3; } 75% { z-index: 1; } }
+.planet-bob { animation: bob 7s ease-in-out infinite; }
+.moon-float { animation: moonFloat 9s ease-in-out infinite; }
+.step-bob { animation: bob 2.6s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-6px); } }
+@keyframes moonFloat { 50% { transform: translate(-6px, 8px); } }
+
+/* Ara sıra geçen roket */
+.flyby { opacity: 0; will-change: transform; animation: flyby 15s linear 1.5s infinite; }
+@keyframes flyby {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(36.9deg); }
+  2% { opacity: 1; }
+  30% { opacity: 1; transform: translate3d(1000px, -1333px, 0) rotate(36.9deg); }
+  30.1%, 100% { opacity: 0; transform: translate3d(1000px, -1333px, 0) rotate(36.9deg); }
+}
+.flyby-trail {
+  position: absolute; left: 50%; top: 36px; width: 6px; height: 160px; margin-left: -3px; border-radius: 6px;
+  background: linear-gradient(180deg, rgba(255,200,140,.75), rgba(220,230,255,.25) 35%, rgba(220,230,255,0));
+}
+.flyby-flame { transform-origin: 9px 32px; animation: flame .12s ease-in-out infinite alternate; }
+@keyframes flame { to { transform: scaleY(.7); } }
+
+/* ================= OYUN EKRANI YARDIMCILARI ================= */
+/* Kolonlar sırayla süzülerek gelir */
+.stagger-in > * { animation: colIn .55s cubic-bezier(.2,.8,.3,1) backwards; }
+.stagger-in > *:nth-child(2) { animation-delay: .08s; }
+.stagger-in > *:nth-child(3) { animation-delay: .16s; }
+@keyframes colIn { from { opacity: 0; transform: translateY(18px); } }
+/* Kırmızı kontrol ışığı yanıp söner (üstteki parlak katmanın sadece opacity'si) */
+.seg-alert::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: rgba(255,77,94,.55); opacity: 0; animation: segPulse 1.4s ease-in-out infinite; pointer-events: none; }
+@keyframes segPulse { 50% { opacity: 1; } }
+/* "Fix it" sonrası açılan sekme / grup sarı halkayla parlar */
+.attention { position: absolute; inset: -3px; border-radius: inherit; pointer-events: none; box-shadow: 0 0 0 2px #ffc94d, 0 0 18px #ffc94d; opacity: 0; animation: attn .45s ease-in-out 6 alternate; }
+@keyframes attn { to { opacity: 1; } }
+.coach-arrow { display: inline-block; animation: bob 1.1s ease-in-out infinite; }
+/* Uzay sahnesindeki araç: nabız gibi parıltı + hafif süzülme */
+.halo-pulse { animation: haloPulse 2.4s ease-in-out infinite; }
+@keyframes haloPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.craft-bob { animation: craftBob 2.2s ease-in-out infinite; }
+@keyframes craftBob { 50% { transform: translateY(-2.5px); } }
+
 @media (prefers-reduced-motion: reduce) {
-  .scene-svg *, .launch-glow::after, .twinkle { animation: none !important; }
+  .scene-svg *, .launch-glow::after, .twinkle, .backdrop *, .shine, .orbit-spin, .orbit-craft, .orbit-z,
+  .planet-bob, .moon-float, .step-bob, .flyby, .flyby-flame, .stagger-in > *, .seg-alert::after, .coach-arrow,
+  .halo-pulse, .craft-bob { animation: none !important; }
+  .attention { animation: none; opacity: 1; }
+  .orbit-craft { transform: translate(-50%, -50%) scaleY(2.94) rotate(14deg); }
 }

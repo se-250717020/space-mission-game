@@ -197,7 +197,10 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
   const glowRef = useRef(null);
   const tel = { time: useRef(null), alt: useRef(null), speed: useRef(null) };
   const shake = useRef({ now: 0, target: 0 });
-  const engine = useRef({ level: 0, vac: false });
+  const engine = useRef({ level: 0, target: 0, vac: false });   // level, target'a yumuşakça yaklaşır (alev yavaşça büyür)
+  const washRef = useRef(null);                    // ateşlemede tüm sahneyi saran turuncu ışık
+  const venting = useRef(false);                   // geri sayımda roketten soğuk buhar tüter
+  const lastVent = useRef(0);
   const tStart = useRef(0);
   const [H] = useState(() => Math.max(420, window.innerHeight));
   const [count, setCount] = useState(null);
@@ -207,6 +210,8 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
   const [boom, setBoom] = useState(null);
   const boomRef = useRef(false);
   const [sparkBursts, setSparkBursts] = useState([]);
+  const [rings, setRings] = useState([]);          // yerde yayılan şok halkaları
+  const [flash, setFlash] = useState(0);           // ateşleme anındaki beyaz parlama
   const [flying, setFlying] = useState(false);
   const smokeRef = useRef(null);                   // duman canvas'ı
   const smokeSize = useRef({ w: 0, h: 0 });
@@ -228,12 +233,19 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
   const nozzleTop = art.base * rocketH;
   const splitTop = art.split * rocketH;
   const plumeW = Math.max(22, art.plume * 2 * k * 1.35);
+  const padLift = 8 - (1 - art.base) * rocketH;     // roketin alt kenarı ile zemin arası (rocketBottom - groundH)
+  const ventY = padLift + rocketH * 0.58 - PUFF / 2;  // buhar çıkış yüksekliği (gövdenin ortası)
 
   const mark = (name, ok) => setRows((r) => r.map((x) => (x.name === name ? { ...x, state: ok ? 'ok' : 'bad' } : x)));
   const addPuffs = (list) => {
     const now = performance.now(), arr = puffs.current;
     for (const p of list) arr.push({ ...p, born: now });
     if (arr.length > MAX_PUFFS) arr.splice(0, arr.length - MAX_PUFFS);   // en eskiler atılır (sınırsız büyümesin)
+  };
+  const shockRing = () => {
+    const id = Date.now() + Math.random();
+    setRings((r) => [...r, id]);
+    setTimeout(() => setRings((r) => r.filter((x) => x !== id)), 1300);
   };
   const burstSparks = () => {
     const id = Date.now() + Math.random();
@@ -259,6 +271,7 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
     if (shakeRef.current) shakeRef.current.style.transform = `translate(${rnd(-1, 1) * s.now}px, ${rnd(-1, 1) * s.now}px)`;
     const a = alt.get();
     const e = engine.current;
+    e.level += (e.target - e.level) * Math.min(1, dt * 3.5);
     if (plumeRef.current) {
       const len = (0.55 + 0.25 * e.level + a * 1.6) * (0.92 + Math.random() * 0.16);
       plumeRef.current.style.opacity = String(e.level ? 0.88 + Math.random() * 0.12 : 0);
@@ -266,6 +279,13 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
     }
     if (diamondsRef.current) diamondsRef.current.style.opacity = String(clamp(1 - a * 3.5, 0, 1) * (0.7 + Math.random() * 0.3));
     if (glowRef.current) glowRef.current.style.opacity = String(e.level * clamp(1 - a * 4, 0, 1) * (0.75 + Math.random() * 0.25));
+    if (washRef.current) washRef.current.style.opacity = String(e.vac ? 0 : e.level * clamp(1 - a * 2.5, 0, 1) * (0.55 + Math.random() * 0.3));
+    // Geri sayımda roketin gövdesinden soğuk (sıvı oksijen) buharı tüter ve aşağı süzülür
+    if (venting.current && time - lastVent.current > 240) {
+      lastVent.current = time;
+      const side = Math.random() < 0.5 ? -1 : 1;
+      addPuffs([{ x: side * (rocketW * 0.3 + rnd(0, 6)), y: ventY + rnd(-14, 14), dx: side * rnd(40, 120), dy: -rnd(30, 90), s: rnd(0.7, 1.5), d: rnd(1.6, 2.6), c: 250, warm: false }]);
+    }
     engineSet(e.level * (1 - a * 0.75), 520 - a * 380);
     // Duman: yerde yanlara yayılan (alevle turuncu aydınlanan) bulut, havada roketin arkasında iz
     if (e.level > 0 && !e.vac && !boomRef.current && time - lastSpawn.current > (a < 0.03 ? 40 : 65) && lift(a) < H * 1.4) {
@@ -300,6 +320,7 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
       await Promise.race([say(text, { interrupt: !!window.speechSynthesis?.speaking }), wait(350)]);
       if (token.dead) throw new Error('cancelled');
     };
+    venting.current = true;
     await w(450);
     for (let n = 5; n >= 1; n--) {
       const t0 = performance.now();
@@ -310,7 +331,7 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
         const build = rows.find((r) => r.name === 'Build and Test');
         if (build) mark('Build and Test', build.ok);
         if (mode === 'scrub') {
-          setCount(null); SFX.siren(); say('Hold. Hold. Hold.', { interrupt: true });
+          setCount(null); venting.current = false; SFX.siren(); say('Hold. Hold. Hold.', { interrupt: true });
           banner('✋ HOLD! HOLD! HOLD!', 'The launch was stopped', '#ff4d5e');
           await w(3400);
           onDone(false);
@@ -330,14 +351,21 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
     const t1 = performance.now();
     await speakNow('Ignition!');
     setCount(0);
+    venting.current = false;
     burstSparks();
     engineStart(); SFX.ignite();
-    engine.current.level = 0.55; shake.current.target = 3.5;
+    // Ateşleme: beyaz parlama, yerde şok halkası, iki yana fışkıran duman, alev yavaşça büyür
+    setFlash(Date.now()); shockRing();
+    addPuffs(Array.from({ length: 18 }, () => {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      return { x: side * rnd(10, 50), y: rnd(0, 12), dx: side * rnd(260, 640), dy: rnd(0, 80), s: rnd(2.6, 4.6), d: rnd(2.6, 4.2), c: rnd(200, 235), warm: Math.random() < 0.7 };
+    }));
+    engine.current.level = 0.12; engine.current.target = 0.55; shake.current.target = 3.5;
     await w(Math.max(0, 1400 - (performance.now() - t1)));
     await speakNow('Liftoff!');
     setCount(null);
     banner('🚀 LIFTOFF!', 'We have liftoff!', '#ffb347');
-    engine.current.level = 1; shake.current.target = 6;
+    engine.current.target = 1; shake.current.target = 6; shockRing();
     tStart.current = performance.now(); setFlying(true);
     const heavy = mode === 'heavy';
     const flight = animate(alt, 1, { duration: heavy ? 16 : 7.2, ease: [0.55, 0, 0.9, 0.55] });
@@ -345,7 +373,7 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
     if (mode === 'boom' || heavy) {
       await w(heavy ? 2300 : 1500);
       flight.stop();
-      engine.current.level = 0; engineStop(0.05);
+      engine.current.level = 0; engine.current.target = 0; engineStop(0.05);
       boomRef.current = true;
       setBoom({ y: lift(alt.get()) + nozzleTop * 0.5 });
       mark('Launch', false);
@@ -358,11 +386,19 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
     await w(1300); banner('💨 MAX-Q', 'The bumpiest part: pushing through thick air', '#4fd1ff'); shake.current.target = 4.5;
     await w(2000);
     // Kademe ayrılması: ana motor susar, alt kademe düşer, üst kademe mavi alevle devam eder
-    engine.current.level = 0; shake.current.target = 0.5; SFX.sep();
+    engine.current.level = 0; engine.current.target = 0; shake.current.target = 0.5; SFX.sep();
     setSeparated(true);
+    {
+      // Ayrılma noktasından beyaz gaz bulutları (dünya koordinatında, roketle aynı yükseklikte)
+      const y = lift(alt.get()) + rocketH * (art.base - art.split) - PUFF / 2;
+      addPuffs(Array.from({ length: 10 }, () => {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        return { x: side * rnd(0, rocketW * 0.7), y: y + rnd(-10, 10), dx: side * rnd(40, 140), dy: rnd(-50, 30), s: rnd(0.8, 1.8), d: rnd(1.2, 2.2), c: 250, warm: false };
+      }));
+    }
     banner('✂️ STAGE SEPARATION', 'The empty first stage falls away', '#ffffff');
     await w(500);
-    engine.current = { level: 0.6, vac: true };
+    engine.current = { level: 0.15, target: 0.6, vac: true };
     await w(2100);
     engineStop(1.4);
     mark('Launch', true);
@@ -371,7 +407,7 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
     onDone(true);
   }, []);
 
-  const rocketBottom = groundH + 8 - (1 - art.base) * rocketH;
+  const rocketBottom = groundH + padLift;
   const img = svgUrl(art.svg);
   const part = (clip) => ({ backgroundImage: `url("${img}")`, backgroundSize: '100% 100%', clipPath: clip });
 
@@ -415,13 +451,26 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
         {/* Kıvılcımlar ve patlama dumanın üstünde kalsın diye ayrı katmanda (dünya ile birlikte kayar) */}
         <motion.div className="pointer-events-none absolute inset-0" style={{ y: worldY }}>
           {sparkBursts.map((id) => <Sparks key={id} bottom={groundH + 10} />)}
+          {rings.map((id) => (
+            <motion.div key={id} className="absolute left-1/2 rounded-[50%] border-2 border-[#ffe2b0]"
+                        style={{ bottom: groundH - 22, width: 240, height: 44, marginLeft: -120, boxShadow: '0 0 24px rgba(255,200,140,.6)' }}
+                        initial={{ scale: 0.15, opacity: 0.95 }} animate={{ scale: 4.2, opacity: 0 }} transition={{ duration: 1.2, ease: [0.1, 0.8, 0.3, 1] }} />
+          ))}
           {boom && <Explosion bottom={groundH + boom.y} />}
         </motion.div>
 
+        {/* Ateşleme ışığı: alev yandıkça tüm sahne turuncuya boyanır (sadece opacity) */}
+        <div ref={washRef} className="pointer-events-none absolute inset-0" style={{ opacity: 0, mixBlendMode: 'screen', willChange: 'opacity',
+             background: 'radial-gradient(ellipse 85% 60% at 50% 100%, rgba(255,150,70,.6), rgba(255,110,40,.18) 45%, rgba(255,110,40,0) 75%)' }} />
         {/* Roket */}
         {!boom && (
           <motion.div className="absolute left-1/2" style={{ bottom: rocketBottom, width: rocketW, height: rocketH, marginLeft: -rocketW / 2, y: rocketY }}>
             <Plume refEl={plumeRef} diamondsRef={diamondsRef} top={separated ? splitTop - 2 : nozzleTop - 2} width={separated ? plumeW * 0.6 : plumeW} vac={separated} />
+            {separated && (
+              <motion.div className="pointer-events-none absolute left-1/2 rounded-full" style={{ top: splitTop - 34, width: 68, height: 68, marginLeft: -34, mixBlendMode: 'screen',
+                          background: 'radial-gradient(circle, #ffffff 0%, rgba(170,205,255,.7) 35%, rgba(120,160,255,0) 70%)' }}
+                          initial={{ scale: 0.2, opacity: 1 }} animate={{ scale: 2.6, opacity: 0 }} transition={{ duration: 0.8, ease: 'easeOut' }} />
+            )}
             {/* Üst kademe */}
             <div className="absolute inset-0" style={part(`inset(0 0 ${(1 - art.split) * 100}% 0)`)} />
             {/* Alt kademe: ayrılınca dönerek düşer */}
@@ -432,6 +481,10 @@ const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, ta
         )}
       </div>
 
+      {flash > 0 && (
+        <motion.div key={flash} className="pointer-events-none absolute inset-0 z-10 bg-[#fff3d6]"
+                    initial={{ opacity: 0.8 }} animate={{ opacity: 0 }} transition={{ duration: 0.7, ease: 'easeOut' }} />
+      )}
       {/* Geri sayım */}
       <AnimatePresence>
         {count !== null && (
@@ -516,6 +569,7 @@ const ROUTE = 'M 205 395 C 300 300, 250 170, 380 175 S 470 360, 580 300 S 660 12
 const EARTH = { x: 150, y: 420, r: 78 };
 const TGT = { x: 845, y: 190 };
 const TWINKLES = Array.from({ length: 16 }, (_, i) => ({ x: (i * 173) % 1000, y: (i * 97 + 40) % 540, d: 1.5 + (i % 5) * 0.5, r: 1 + (i % 3) * 0.5 }));
+const TRAIL = 14;   // izdeki daire sayısı
 const EVENT_TINT = { 'Solar Storm': '#ffcf5a', 'Micrometeoroid Strike': '#ffffff', 'Cosmic Ray Burst': '#c084fc' };
 
 const SpaceScene = memo(function SpaceScene({ rows: initialRows, failName, target, craft, banner, onDone }) {
@@ -532,7 +586,24 @@ const SpaceScene = memo(function SpaceScene({ rows: initialRows, failName, targe
   const tr = target === 'Psyche' ? 42 : target === 'Moon' || target === 'Europa' ? 62 : 76;
   const cw = 54, ch = cw * (craft.height / craft.width);
 
-  const place = (x, y, deg, scale = 1) => craftRef.current?.setAttribute('transform', `translate(${x} ${y}) rotate(${deg}) scale(${scale})`);
+  // Aracın arkasında solan bir iz: son konumlar küçük bir dizide tutulur, daireler doğrudan
+  // setAttribute ile taşınır (React yeniden çizim yapmaz)
+  const trailRef = useRef(null);
+  const hist = useRef([]);
+  const place = (x, y, deg, scale = 1) => {
+    craftRef.current?.setAttribute('transform', `translate(${x} ${y}) rotate(${deg}) scale(${scale})`);
+    const h = hist.current;
+    h.push(x, y);
+    if (h.length > TRAIL * 4) h.splice(0, 2);
+    const g = trailRef.current; if (!g) return;
+    const n = h.length / 2;
+    for (let i = 0; i < TRAIL; i++) {
+      const c = g.children[i], k = n - 1 - i * 2;
+      if (k < 0) { c.setAttribute('opacity', '0'); continue; }
+      c.setAttribute('cx', h[k * 2]); c.setAttribute('cy', h[k * 2 + 1]);
+      c.setAttribute('opacity', String(0.5 * (1 - i / TRAIL)));
+    }
+  };
   const pathLen = useRef(0);   // yol uzunluğu değişmez: her karede yeniden hesaplanmasın
   useMotionValueEvent(p, 'change', (v) => {
     const path = pathRef.current; if (!path || orbiting) return;
@@ -543,7 +614,9 @@ const SpaceScene = memo(function SpaceScene({ rows: initialRows, failName, targe
   useMotionValueEvent(orbitA, 'change', (ang) => {
     const R = tr * 1.55, x = TGT.x + Math.cos(ang) * R, y = TGT.y + Math.sin(ang) * R * 0.42;
     place(x, y, (Math.atan2(Math.cos(ang) * 0.42, -Math.sin(ang)) * 180) / Math.PI, 0.8);
-    if (craftRef.current) craftRef.current.style.opacity = Math.sin(ang) < 0 && Math.abs(Math.cos(ang)) < 0.62 ? '0.25' : '1';
+    const behind = Math.sin(ang) < 0 && Math.abs(Math.cos(ang)) < 0.62 ? '0.25' : '1';
+    if (craftRef.current) craftRef.current.style.opacity = behind;
+    if (trailRef.current) trailRef.current.style.opacity = behind;
   });
 
   const mark = (name, ok) => setRows((r) => r.map((x) => (x.name === name ? { ...x, state: ok ? 'ok' : 'bad' } : x)));
@@ -612,6 +685,7 @@ const SpaceScene = memo(function SpaceScene({ rows: initialRows, failName, targe
         <defs>
           <radialGradient id="sun-glow"><stop offset="0" stopColor="#fff2c4" stopOpacity=".5" /><stop offset="1" stopColor="#ffb347" stopOpacity="0" /></radialGradient>
           <radialGradient id="engine-glow"><stop offset="0" stopColor="#ffffff" /><stop offset=".3" stopColor="#9fd8ff" stopOpacity=".8" /><stop offset="1" stopColor="#4fd1ff" stopOpacity="0" /></radialGradient>
+          <radialGradient id="craft-halo"><stop offset="0" stopColor="#bfeaff" stopOpacity=".55" /><stop offset=".5" stopColor="#4fd1ff" stopOpacity=".18" /><stop offset="1" stopColor="#4fd1ff" stopOpacity="0" /></radialGradient>
           <radialGradient id="burn-glow"><stop offset="0" stopColor="#ffffff" /><stop offset=".35" stopColor="#ffb347" stopOpacity=".85" /><stop offset="1" stopColor="#ff5a12" stopOpacity="0" /></radialGradient>
         </defs>
         <circle cx="-40" cy="-40" r="260" fill="url(#sun-glow)" />
@@ -631,6 +705,9 @@ const SpaceScene = memo(function SpaceScene({ rows: initialRows, failName, targe
         )}
         <PlanetShape name={target} cx={TGT.x} cy={TGT.y} r={tr} id="target-route" />
         <text x={TGT.x} y={TGT.y + tr + 32} textAnchor="middle" className="fill-[#ffd98a] text-[20px] font-extrabold">🎯 {target.toUpperCase()}</text>
+        <g ref={trailRef} style={{ display: lost ? 'none' : undefined }}>
+          {Array.from({ length: TRAIL }, (_, i) => <circle key={i} r={4.5 - i * 0.25} fill="#9fdcff" opacity="0" />)}
+        </g>
         <g ref={craftRef} transform="translate(205 395)">
           <motion.g animate={lost ? { opacity: [1, 0.1, 0.8, 0, 0.6, 0], x: [0, 3, -4, 2, 0] } : { opacity: 1 }}
                     transition={lost ? { duration: 1.6 } : {}}>
@@ -639,8 +716,8 @@ const SpaceScene = memo(function SpaceScene({ rows: initialRows, failName, targe
               <motion.circle cx={-cw * 0.45} cy="0" r="14" fill="url(#engine-glow)" animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.7, 1, 0.7] }}
                              transition={{ repeat: Infinity, duration: 0.5 }} />
             )}
-            <circle r="18" fill="#4fd1ff" opacity=".12" />
-            <image href={svgUrl(craft.svg)} x={-cw / 2} y={-ch / 2} width={cw} height={ch} />
+            <circle r="30" fill="url(#craft-halo)" className="halo-pulse" />
+            <g className="craft-bob"><image href={svgUrl(craft.svg)} x={-cw / 2} y={-ch / 2} width={cw} height={ch} /></g>
             {burn > 0 && (
               <motion.circle key={burn} cx={cw * 0.5} cy="0" r="30" fill="url(#burn-glow)" initial={{ scale: 0.2, opacity: 1 }}
                              animate={{ scale: [0.2, 1.6, 1.2, 0], opacity: [1, 1, 0.8, 0] }} transition={{ duration: 2.2 }} />

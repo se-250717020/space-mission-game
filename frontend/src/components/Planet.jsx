@@ -55,7 +55,7 @@ export function PlanetShape({ name, cx, cy, r, id }) {
 export default function Planet({ name, size = 64, className = '' }) {
   return (
     <svg viewBox="0 0 100 100" width={size} height={size} className={className} aria-hidden="true">
-      <PlanetShape name={name} cx={50} cy={50} r={36} id={`solo-${name}-${size}`} />
+      <PlanetShape name={name} cx={50} cy={50} r={36} id={`solo-${name}-${String(size).replace(/\W/g, '')}`} />
     </svg>
   );
 }

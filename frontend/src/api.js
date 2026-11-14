@@ -30,5 +30,15 @@ export const getLeaderboard = (mission, difficulty) => {
   return request('/api/leaderboard?' + q.toString());
 };
 
+// Uçuş mini oyunu ("Science Run") puanı: kaydedilir, sıra + ilk 5 pilot döner
+export const postFlightScore = (selection, playerName, score, packets) =>
+  request('/api/flight-score', { method: 'POST', body: JSON.stringify({ selection, player_name: playerName, score, packets }) });
+
+export const getFlightLeaderboard = (mission) => {
+  const q = new URLSearchParams();
+  if (mission) q.set('mission', mission);
+  return request('/api/flight-leaderboard?' + q.toString());
+};
+
 // SVG metnini <img src> olarak kullanmak için
 export const svgUrl = (svg) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);

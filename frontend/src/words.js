@@ -55,6 +55,14 @@ export const CHECK_WORDS = {
   science: ['🔬', 'Science tools ready', 'Missing science tools', 'Add the science tools your goals need.'],
 };
 
+// "Düzelt" düğmesi: bir kontrol kırmızıysa atölyede hangi sekme / parça grubu açılsın
+export const FIX_TARGETS = {
+  budget: { tab: 'rocket' }, schedule: { tab: 'parts', group: 'science' }, mass: { tab: 'rocket' },
+  power: { tab: 'parts', group: 'power' }, battery: { tab: 'parts', group: 'power' }, radiation: { tab: 'parts', group: 'armor' },
+  comms: { tab: 'parts', group: 'antenna' }, data: { tab: 'parts', group: 'antenna' }, pointing: { tab: 'parts', group: 'brain' },
+  coverage: { tab: 'mission' }, lifetime: { tab: 'mission' }, science: { tab: 'parts', group: 'science' },
+};
+
 // 4 ana kaynak çubuğu
 export const MAIN_GAUGE_WORDS = {
   budget: ['💰 Money', { ok: 'Money left over 😎', warning: 'Running low 😬', danger: 'Over budget! 🚨' }],

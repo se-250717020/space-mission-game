@@ -68,9 +68,13 @@ Rastgele uzay olayları (zorluğa göre ihtimal):
 - **Solar Storm / Cosmic Ray Burst:** koruma seviyesi görevin istediğinden *yüksekse* zarar vermez.
 - **Micrometeoroid Strike:** antende *yedek* varsa zarar vermez.
 
-**Mini oyun (görev başarılıysa):** ok tuşları / WASD / dokunarak uç; 💾 veri topla (anten Dünya'ya
-yollar, 🔬 puan olur), ⚡ enerji topla, ☄️ asteroitlerden kaç. Kütle çevikliği, güç payı enerjiyi,
-fazla kalkan + yedek anten canı, anten + yer istasyonu gönderim hızını, bilgisayar hafızayı belirler.
+**Mini oyun "Science Run" (görev başarılıysa):** ok tuşları / WASD / dokunarak uç; hedef gezegenin
+yanında 💎 bilim verisi topla, hafıza dolunca Dünya'nın 📡 gönderme bölgesine uç: veri sadece orada
+eve gider (🔬 puan). Art arda gönderilen her 5 paket puan çarpanını artırır (en fazla x5, asteroite
+çarpınca sıfırlanır); hafıza tamamen doluyken eve gelmek "tam yük" bonusu verir. ⚡ enerji topla,
+☄️ asteroitlerden kaç. Kütle çevikliği, güç payı enerjiyi, fazla kalkan + yedek anten canı,
+anten + yer istasyonu gönderim hızını, bilgisayar hafızayı, bilim puanı paket değerini belirler.
+Puana göre rütbe (Cadet → Pilot → Commander → NASA Legend) ve Pilotlar skor tablosu.
 
 **Diğer:** Space School sayfası (sözlük, kontrol dersleri, gerçek NASA görevleri), skor tablosu,
 Options (ses, animasyon, tasarım kodu `SMG1-...` ile kaydet / paylaş), karneyi Markdown indir.
