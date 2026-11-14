@@ -91,6 +91,8 @@ HERKESE AÇIK FONKSİYONLAR (app.py bunları kullanır):
     resource_gauges(selection)           -> GAUGE listesi (görev panosu göstergeleri, aşağıda)
     design_warnings(selection)           -> WARNING listesi (fırlatmadan önce anlık uyarılar)
     change_impact(before, after)         -> IMPACT sözlüğü (bir değişikliğin bedeli)
+    part_ratings(category, selection=None) -> {part_id: {özellik: 1|2|3}} (sayısız karşılaştırma;
+                                            özellikler RATING_FIELDS'te)
 
 REQUIREMENTS sözlüğü:
     {"budget", "development_months", "radiation_level", "science_target",
@@ -1526,6 +1528,47 @@ def design_warnings(selection):
     order = {"danger": 0, "warning": 1, "info": 2}
     warnings.sort(key=lambda w: order[w["level"]])
     return warnings
+
+
+# part_ratings: her kategori için 1-3 arası puanlanan özellikler {ad: (alan, ters_mi)}.
+# Puan 3 = "o özellikten çok" (cost 3 = pahalı, lift 3 = çok taşır). ters_mi=True ise küçük değer
+# daha çok sayılır (aim: küçük derece = daha iyi nişan → 3).
+RATING_FIELDS = {
+    "rocket": {"cost": ("cost_musd", False), "lift": ("leo_capacity_kg", False),
+               "reliability": ("success_rate", False)},
+    "power": {"cost": ("cost_musd", False), "mass": ("mass_kg", False), "output": ("power_output_w", False)},
+    "battery": {"cost": ("cost_musd", False), "mass": ("mass_kg", False), "energy": ("capacity_wh", False)},
+    "computer": {"cost": ("cost_musd", False), "toughness": ("radiation_bonus_levels", False),
+                 "power_use": ("power_draw_w", False)},
+    "adcs": {"cost": ("cost_musd", False), "aim": ("pointing_accuracy_deg", True)},
+    "shield": {"cost": ("cost_musd", False), "mass": ("mass_kg", False), "protection": ("protection_level", False)},
+    "instruments": {"cost": ("cost_musd", False), "mass": ("mass_kg", False), "power_use": ("power_draw_w", False),
+                    "science": ("science_points", False), "data": ("data_gb_per_day", False)},
+    "comms": {"cost": ("cost_musd", False), "mass": ("mass_kg", False), "range": ("range_level", False),
+              "speed": ("downlink_gb_per_day", False)},
+    "ground_station": {"cost": ("cost_musd_per_year", False), "speed": ("downlink_multiplier", False)},
+}
+
+
+def part_ratings(category, selection=None):
+    """Parçaları sayı göstermeden karşılaştırmak için 1-3 arası puanlar: {part_id: {özellik: 1|2|3}}.
+    Puan, parçanın kategorideki sırasına göre verilir (en az → 1, en çok → 3).
+    `selection` verilirse güneş panellerinin "output" puanı görevin güneş ışığına göre hesaplanır
+    (uzak hedeflerde paneller zayıflar, RTG zayıflamaz)."""
+    table = PART_TABLES[category]
+    ratings = {pid: {} for pid in table}
+    for name, (field, invert) in RATING_FIELDS[category].items():
+        def value(part):
+            v = part[field]
+            if category == "power" and field == "power_output_w" and selection and part["type"] == "solar":
+                v *= _mission(selection)["solar_efficiency"]
+            return -v if invert else v
+        values = sorted({value(part) for part in table.values()})
+        steps = len(values)
+        for pid, part in table.items():
+            rank = values.index(value(part))
+            ratings[pid][name] = 1 + round(rank * 2 / (steps - 1)) if steps > 1 else 2
+    return ratings
 
 
 SELECTION_LABELS = {

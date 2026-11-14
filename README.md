@@ -5,8 +5,8 @@ roket, enerji sistemi, batarya, uçuş bilgisayarı, yönelim kontrolü, radyasy
 yer istasyonu ve bilimsel cihazlarla uzay aracını tasarla. Bütçe, takvim, kütle, güç, veri ve
 görev ömrü kısıtlarını dengele, fırlat, yolda uzay olaylarına dayan; sonunda nedenleriyle
 açıklanan mühendislik karneni, görev sonrası analizini ve sana en çok benzeyen gerçek NASA
-görevini gör. **Tek başına** veya **4 kişilik takım** halinde (her oyuncu kendi cihazından,
-kendi rolüyle) oynanır.
+görevini gör. Tek kişiliktir ve ilkokul öğrencisinin bile anlayacağı kadar sade: sayılar yerine
+renkli çubuklar ve emoji puanlar; teknik ayrıntılar "📚 Why? (Learn more)" kutularında.
 
 - **GitHub:** https://github.com/se-250717020/space-mission-game
 - **Canlı oyun (Streamlit):** https://space-mission-game.streamlit.app/
@@ -19,11 +19,10 @@ kendi rolüyle) oynanır.
 |---|---|
 | `data.py` | Görev, bilimsel hedef, yörünge, roket, enerji, batarya, bilgisayar, yönelim, kalkan, cihaz, anten, yer istasyonu, uzay olayı, sürpriz kısıt, zorluk, sözlük, ders, takım rolü ve gerçek NASA görevi sözlükleri (sadece veri) |
 | `calculations.py` | Saf Python hesap fonksiyonları, puanlama, fırlatma simülasyonu, analiz, tasarım kodu, skor tablosu (Streamlit yok) |
-| `team_room.py` | Takım modu odaları: oda kodu, roller, ortak tasarım, hazır durumu, sohbet (Streamlit yok) |
-| `app.py`, `assets/`, `.streamlit/config.toml` | Streamlit arayüzü (karanlık "Mission Control" teması): 4 adımlı görev akışı, kaynak göstergeleri (HUD), anlık mühendislik uyarıları, geri sayım ve uçuş sonrası rapor; Learn, Leaderboard, Compare & Share sekmeleri |
+| `app.py`, `assets/`, `.streamlit/config.toml` | Streamlit arayüzü (karanlık uzay teması, tek kişilik, çocuk dostu): 4 adımlı akış, renkli kaynak çubukları, emoji parça puanları, basit mühendis ipuçları, geri sayım ve rapor; Space School, Leaderboard, Share sekmeleri |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
-Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (+ `team_room.py`). Ortak dil
+Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil
 `selection` sözlüğüdür (şeması `AI_CONTEXT.md` ve `calculations.py` dosyasının en üstünde).
 
 ## Oyunun kuralları (kısaca)
@@ -44,8 +43,7 @@ Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (+ `team_room.p
 | Science | Seçili hedeflerin istediği cihaz türlerinin hepsi var ve bilim puanı ≥ hedeflerin toplamı |
 
 **Puan (100):** kontroller 50 + bilim 20 + verimlilik (artan bütçe, kütle ve güç payı) 20 +
-iddia (seçilen hedeflerin bilimsel değeri) 10. Takım puanı = görev puanı × 0,8 + tutturulan her
-rol hedefi için 5.
+iddia (seçilen hedeflerin bilimsel değeri) 10.
 
 **Zorluk seviyeleri:**
 
@@ -64,14 +62,7 @@ Rastgele uzay olayları (zorluğa göre ihtimal):
 - **Solar Storm / Cosmic Ray Burst:** koruma seviyesi görevin istediğinden *yüksekse* zarar vermez.
 - **Micrometeoroid Strike:** antende *yedek* varsa zarar vermez.
 
-**Takım modu (2–4 oyuncu):** biri oda açar, ötekiler 4 harfli kodla katılır. Roller: Mission Lead
-(görev, hedef, yörünge, yer istasyonu), Science Lead (cihazlar, bilgisayar), Systems Engineer
-(enerji, batarya, kalkan, anten), Flight Director (roket, yönelim). Herkes sadece kendi rolünün
-seçimlerini değiştirir, değişiklikler birkaç saniyede herkesin ekranına gelir. Her rolün kişisel
-hedefi var (ör. bütçeden %10 artır ↔ bilim hedefini %20 aş), takım sohbetinde pazarlık edilir.
-Herkes "Ready" deyince Flight Director "GO FOR LAUNCH" verir.
-
-**Diğer:** Learn sekmesi (sözlük, kontrol dersleri, gerçek NASA görevleri), skor tablosu, tasarım
+**Diğer:** Space School sekmesi (sözlük, kontrol dersleri, gerçek NASA görevleri), skor tablosu, tasarım
 kodu (`SMG1-...`) ile kaydet / paylaş / iki tasarımı karşılaştır, karneyi Markdown indir.
 
 ---
@@ -148,10 +139,6 @@ python data.py
 
 ```bash
 python calculations.py
-```
-
-```bash
-python team_room.py
 ```
 
 VS Code'a sanal ortamı tanıtmak için: `Ctrl+Shift+P` → **Python: Select Interpreter** → `.venv` olanı seç.

@@ -13,9 +13,8 @@ istasyonu ve bilimsel cihazlarla uzay aracını tasarlar; bütçe, takvim, kütl
 yönelim, kapsama ve görev ömrü kısıtlarını dengeler; fırlatır; sonunda nedenleriyle açıklanan
 bir mühendislik karnesi, görev sonrası analiz ve en benzer gerçek NASA görevini görür.
 
-- **Tek oyunculu** veya **takım modu (en fazla 4 oyuncu, her biri kendi cihazından)**: oda kodu ile
-  katılınır, her oyuncu bir veya birkaç rol (`TEAM_ROLES`) alır, sadece kendi rolünün seçimlerini
-  değiştirir, rollerin kişisel hedefleri çatışır → takım sohbetinde pazarlık.
+- **Tek oyunculu**, ilkokul öğrencisinin bile anlayacağı sade bir dille; teknik ayrıntılar
+  "📚 Why? (Learn more)" kutularında. (Takım modu 2026-11-14'te kaldırıldı.)
 - **Zorluk seviyeleri:** Easy, Normal, Hard (sürpriz kısıt + tüm kontroller), Sandbox.
 - Öğren sekmesi (sözlük, dersler, gerçek görevler), skor tablosu, tasarım kodu ile kaydet/paylaş/karşılaştır.
 
@@ -28,12 +27,11 @@ Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geli�
 |---|---|
 | `data.py` | Sadece veri sözlükleri + `validate_schema()` |
 | `calculations.py` | Saf hesap fonksiyonları, `import streamlit` YOK |
-| `team_room.py` | Takım odası deposu (`RoomStore`), saf Python, `import streamlit` YOK |
 | `app.py` | Streamlit ekranı, hesap YOK |
 | `assets/` | Görseller, GIF'ler (arayüz tasarımında eklenecek) |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
-Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (+ `team_room.py`).
+Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`.
 `app.py` sayıları **sadece** `calculations.py`'den ister, listeleri `data.py`'den okur.
 
 ## 3. Değişmez kurallar
@@ -42,7 +40,7 @@ Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (+ `team_room.p
    Ekranda görünen tüm metinler de İngilizce. Sadece yorumlar (`#`, `"""`) Türkçe olabilir.
 2. Mevcut **ID'ler, sözlük anahtarları, public fonksiyon adları/parametreleri ve dönen sözlük
    anahtarları** silinmez, yeniden adlandırılmaz. **Yeni öğe eklemek serbest**.
-3. `calculations.py` ve `team_room.py` içine `import streamlit` yazılmaz. `app.py` içinde hesap yapılmaz.
+3. `calculations.py` içine `import streamlit` yazılmaz. `app.py` içinde hesap yapılmaz.
 4. Yeni bir kütüphane kullanılmaz (sadece `streamlit` ve Python standart kütüphanesi).
 5. Dosyaların en üstündeki açıklama yorumu ve `data.py`'deki şema kontrolü korunur.
 6. Denge kuralı: her görev her zorlukta en az bir tasarımla geçilebilmeli ama kolay olmamalı.
@@ -148,7 +146,7 @@ Public fonksiyonlar (tam açıklama `calculations.py` dosyasının en üstünde)
 | `mission_lifetime(selection)` | `{"lifetime_years", "required_years", "shield_bonus_years"}` |
 | `missing_instrument_types(selection)`, `total_science_points(selection)`, `event_risks(selection)` | list / int / list |
 | `evaluate_mission(selection)` | RESULT |
-| `role_report(selection)`, `team_goal_metrics(selection)`, `team_report(selection)` | ROLE listesi / `{metric: float}` / TEAM |
+| `role_report(selection)`, `team_goal_metrics(selection)`, `team_report(selection)` | ROLE listesi / `{metric: float}` / TEAM (arayüzde kullanılmıyor) |
 | `letter_grade(score)` | `"A+"` … `"F"` |
 | `roll_design_twist(seed=None)`, `roll_space_events(selection, seed=None)`, `simulate_launch(selection, seed=None)` | twist ID / EVENT listesi / LAUNCH |
 | `mission_timeline(selection)` | `[{"name", "start_month", "months", "description"}]` |
@@ -160,6 +158,7 @@ Public fonksiyonlar (tam açıklama `calculations.py` dosyasının en üstünde)
 | `resource_gauges(selection)` | GAUGE listesi (CHECK_IDS sırası; HUD ve durum panosu) |
 | `design_warnings(selection)` | WARNING listesi (fırlatmadan önce anlık mühendislik uyarıları, en ciddisi önce) |
 | `change_impact(before, after)` | IMPACT (bir değişikliğin bedeli: ne değişti, artı/eksiler, yeni/çözülen sorunlar) |
+| `part_ratings(category, selection=None)` | `{part_id: {özellik: 1, 2 veya 3}}` — parçaları sayısız karşılaştırmak için; özellikler `RATING_FIELDS`'te (ör. rocket: cost, lift, reliability). 3 = o özellikten çok (cost 3 = pahalı, aim 3 = en hassas). `selection` verilirse güneş panellerinin gücü görevin güneş ışığına göre puanlanır |
 
 ```python
 RESULT = {"success": bool,            # aktif kontrollerin hepsi geçti mi
@@ -207,50 +206,38 @@ Kural özeti:
   (kamera / anten / uçuş bilgisayarı) `DAMAGE_SEVERITIES` (%10/25/50) hasar verir ve mesajda
   `NASA_EVENT_WARNINGS` uyarısı çıkar. `shield_margin` → koruma görevin istediğinden yüksekse korur;
   `backup_comms` → yedek anten korur.
-- Takım puanı = görev puanı × 0.8 + tutturulan her rol hedefi için 5.
 
-## 6. Sözleşme: `team_room.py`
+## 6. `team_room.py` (kaldırıldı)
 
-`RoomStore` metodları: `create_room(design, difficulty, twist=None) -> code`, `get_room(code)`,
-`join(code, player_name) -> (code, name)`, `leave`, `heartbeat`, `set_roles(code, player, roles)`,
-`role_owner`, `update_design(code, player, key, value, normalize=None)` (sadece rolün `controls`
-anahtarları), `set_ready`, `set_twist`, `set_launch(code, player, selection, result) -> bool`
-(zaten fırlatıldıysa False), `mark_leaderboard_saved(code, player) -> bool` (takım skoru bir kez),
-`add_chat`.
-Yardımcılar: `is_online(player_info)`, `online_players(room)`, `all_roles_claimed(room)`,
-`everyone_ready(room)`, `roles_of(room, player)`, `controls_of(room, player)`. Oda sözlüğünün
-şeması dosyanın en üstünde.
-
-Bağlantı kuralları: `OFFLINE_SECONDS` (30) boyunca heartbeat göndermeyen oyuncu çevrimdışıdır.
-Çevrimdışı oyuncunun rolleri başkası tarafından alınabilir, hazır sayımına ve rol sayımına girmez,
-oda doluysa yeni gelen oyuncuya yer açmak için çıkarılır. Bağlı bir oyuncunun ismiyle ikinci kişi
-giremez; çevrimdışı oyuncu aynı isimle girerse rollerine geri döner.
+Takım modu 2026-11-14'te kaldırıldı, oyun sadece tek kişilik. `team_room.py` silindi.
+`data.TEAM_ROLES`, `TEAM_GOAL_METRICS` ve `calculations` içindeki `role_report`, `team_goal_metrics`,
+`team_report` sözleşmeyi bozmamak için duruyor ama arayüzde kullanılmıyor.
 
 ## 7. Sözleşme: `app.py`
 
-- Akış (`STEPS`): 🎯 Mission Brief → 🚀 Launch Vehicle → 🛠️ Spacecraft → 🛰️ Launch Control.
-  `draw_design_flow(design, editable, apply_change, prefix, launch_panel)` tek kişi ve takım için ortak:
-  HUD (`draw_hud`, üstte 4 ana kaynak + ekranın altına sabit çubuk), adım çubuğu (`draw_stepper`),
-  son değişikliğin bedeli (`record_impact` / `draw_impact`, kart + toast), anlık uyarılar (`draw_advisor`),
-  4. adımda GO/NO-GO yoklaması (`draw_go_poll`), durum panosu (`draw_gauges`) ve fırlatma.
-- Ortak: `draw_header()`, `ratio_bar(label, value, limit, unit, decimals=0, active=True)`,
-  `type_label(t)`, `role_badge(key)`, `part_caption(category, part_id)`, `part_chips(...)`, `PART_FORMAT`,
-  `draw_spec_card(category, part_id, design)`, `part_picker(...)`.
-- Tasarım ekranı (tek kişi ve takım aynı): `design_widget(kind, label, key, options, design,
-  editable, apply_change, prefix, format_func=str, **kwargs)` (kind: select | radio | cards | multi |
-  pills | slider), `draw_mission_step(...)`, `draw_rocket_step(...)`, `draw_instrument_bay(...)`,
-  `draw_part_picker(design, editable, apply_change, prefix)`, `draw_gauges(selection)`,
-  `draw_launch(selection)`, `draw_report_card(selection, launch_result, team_mode=False, leaderboard_name="",
-  saved_by=None, on_save=None)` (aynı fırlatma skor tablosuna bir kez yazılır), `draw_role_picker(code, me, room)`.
-- Modlar: `draw_single_player()`, `draw_team_mode()` (`draw_team_lobby`, `draw_team_room`,
-  `draw_team_live` → `st.fragment(run_every=3)`), sekmeler `draw_learn_tab`, `draw_leaderboard_tab`,
-  `draw_share_tab`, `main()`.
-- `st.session_state`: `single_design` (tek kişilik selection), widget'lar `s_<key>` (tek kişi) ve
-  `t_<key>` (takım), cihaz kutuları `s_inst_<id>` / `t_inst_<id>`, adım `s_step` / `t_step`,
-  son değişiklik `s_impact` / `t_impact`, `_seen` (senkron), `launch`, `team` (`{"code", "name"}`),
-  `mode` (`"Single Player"` / `"Team Mode (up to 4)"`).
-- Görünüm: `.streamlit/config.toml` (karanlık tema) + `app.py` sonundaki `CSS` (yazı tipleri, kartlar,
-  HUD, konsol, rapor). Sayfadaki HTML parçaları `show_html()` ile çizilir; kullanıcı metni `esc()` ile.
+- Tek kişilik, sade ve çocuk dostu arayüz. Ekranda **sayı az**: kaynaklar renkli `st.progress`
+  çubukları (yeşil → sarı → kırmızı, `resource_gauges` seviyesine göre CSS ile) ve kısa cümleler;
+  parçalar 1-3 emoji puanla (`calc.part_ratings`). Tam sayılar, terimler ve hesap mesajları her zaman
+  `st.expander(LEARN_LABEL)` (`"📚 Why? (Learn more)"`) kutularında.
+- Akış (`STEPS`): 🎯 Mission → 🚀 Rocket → 🛠️ Spacecraft → 🛰️ Launch. `draw_game()`:
+  `draw_hud` (4 ana kaynak çubuğu + diğer kontroller ✅/❌ rozet + ekranın altına sabit çubuk),
+  `draw_stepper`, `draw_impact` (son değişiklik kelimelerle + toast), adım ekranı, `draw_advisor`
+  (sorun + basit çözüm), `draw_step_nav`.
+- Adımlar: `draw_mission_step`, `draw_rocket_step`, `draw_spacecraft_step` (`draw_instrument_bay`),
+  `draw_launch_step` (`draw_go_poll`, `draw_launch`, `animate_launch`, `draw_report`,
+  `draw_leaderboard_save`). Sürpriz kısıt `draw_twist(design, with_button=False)`.
+- Ortak: `design_widget(kind, label, key, options, design, format_func=str, **kwargs)` (kind: radio |
+  cards | pills | slider), `part_picker(label, key, design, intro="")`, `draw_part_card`,
+  `rating_items`, `part_tags`, `part_numbers` (sadece Öğren kutusunda), `apply_change(key, value)`.
+- Ekran metinleri sözlükleri: `CHECK_WORDS` (her kontrol için emoji, iyi/sorun cümlesi, çözüm),
+  `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`, `CATEGORY_LEARN`.
+- Sekmeler: `draw_learn_tab` (Space School), `draw_leaderboard_tab` (madalyalı liste),
+  `draw_share_tab`, `main()`. Tablo (`st.dataframe`) kullanılmaz.
+- `st.session_state`: `single_design` (selection), widget'lar `s_<key>`, cihaz kutuları `s_inst_<id>`,
+  adım `s_step`, son değişiklik `s_impact` / `s_toast`, `_seen` (senkron), `launch`, `_saved_launches`.
+- Görünüm: `.streamlit/config.toml` (karanlık tema) + `app.py` sonundaki `CSS`. Çubuk renkleri
+  `st.container(key="gauge-<seviye>-<id>")` sınıfıyla verilir. HTML parçaları `show_html()`, kullanıcı
+  metni `esc()` ile.
 - Skor tablosu `leaderboard.json` dosyasında (GitHub'a gitmez, sunucu yeniden başlarsa sıfırlanır).
 
 ## 8. Kontrol komutları
@@ -258,6 +245,5 @@ giremez; çevrimdışı oyuncu aynı isimle girerse rollerine geri döner.
 ```
 python data.py            # ✅ görmeli
 python calculations.py    # hatasız bitmeli
-python team_room.py       # ✅ görmeli
 python -m streamlit run app.py   # oyunu baştan sona oyna, kırmızı hata kutusu olmamalı
 ```

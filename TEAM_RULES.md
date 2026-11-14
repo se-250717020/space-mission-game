@@ -15,11 +15,10 @@ Kısa, net, herkes uyar.
 |---|---|
 | 1. Kişi — NASA Araştırmacısı | `data.py` değerlerinin gerçek NASA verilerine uygunluğu, `fun_fact`, `REAL_MISSIONS`, kaynaklar |
 | 2. Kişi — Oyun Kuralları | Kontrollerin ve puanlamanın mantıklı olması, oyunun dengesi (kolay/zor), test oyunları |
-| 3. Kişi — Görsel ve Arayüz | Arayüz tasarımı (birlikte yapılacak), görseller (`assets/`), takım modunun denenmesi |
+| 3. Kişi — Görsel ve Arayüz | Arayüz tasarımı (birlikte yapılacak), görseller (`assets/`), metinlerin çocuklar için anlaşılırlığı |
 | 4. Kişi — Teknik Lider (Emirhan) | Claude Code, commit/push, yayın, sözleşme (`AI_CONTEXT.md`), demo |
 
-> Oyundaki **roller** (Mission Lead, Science Lead, Systems Engineer, Flight Director) oyuncu
-> rolleridir, ekipteki kişilerle ilgisi yoktur. Demo'da takım modunu 4 kişi 4 cihazdan oynarız.
+> Oyun tek kişiliktir; takım modu 2026-11-14'te kaldırıldı (`team_room.py` silindi).
 
 ## B. Asla değiştirilmeyenler (sözleşme)
 
@@ -29,9 +28,9 @@ Bütün isimlerin tam listesi **[AI_CONTEXT.md](AI_CONTEXT.md)** dosyasındadır
    anahtarları, ID'ler ve ekranda görünen tüm metinler. Sadece kod yorumları ve ekip dokümanları
    Türkçe.
 5. **Sözlük anahtarları ve ID'ler** yeniden adlandırılmaz, silinmez. Yeni öğe *eklemek* serbest.
-6. **`calculations.py`, `team_room.py` ve `app.py` içindeki mevcut fonksiyonların** adı,
+6. **`calculations.py` ve `app.py` içindeki mevcut fonksiyonların** adı,
    parametreleri ve döndürdüğü sözlüğün anahtarları değişmez. Yeni fonksiyon eklenebilir.
-7. `calculations.py` ve `team_room.py` içine **`import streamlit` yazılmaz.** `app.py` içinde
+7. `calculations.py` içine **`import streamlit` yazılmaz.** `app.py` içinde
    **hesap yapılmaz** (sayılar `calculations.py`'den istenir).
 8. **Denge kuralı:** her görev her zorlukta en az bir tasarımla geçilebilmeli ama kolay olmamalı.
 
@@ -46,14 +45,10 @@ python calculations.py
 ```
 
 ```bash
-python team_room.py
-```
-
-```bash
 python -m streamlit run app.py
 ```
 
-İlk üçü hatasız bitmeli; oyunda tek kişilik ve takım modu baştan sona oynanmalı, kırmızı hata
+İlk ikisi hatasız bitmeli; oyun baştan sona (bilgisayar ve telefon görünümü) oynanmalı, kırmızı hata
 kutusu olmamalı. Push'tan önce `git fetch`, `git add` ile sadece değişen dosyalar
 (`git add .` değil), `--force` / `reset --hard` **asla**.
 
@@ -66,7 +61,7 @@ kutusu olmamalı. Push'tan önce `git fetch`, `git add` ile sadece değişen dos
 
 | Aşama | Ne yapıyoruz |
 |---|---|
-| ✅ Arka plan | Tüm hesaplar, NASA verileri, 6 görev, 12 kontrol, zorluklar, takım modu, skor tablosu, paylaşım |
+| ✅ Arka plan | Tüm hesaplar, NASA verileri, 6 görev, 12 kontrol, zorluklar, skor tablosu, paylaşım |
 | ⏳ Arayüz | Görsel tasarım birlikte: tema, görseller, fırlatma animasyonu, mobil görünüm |
 | ⏳ Test | Oyun 10–15 kez oynanır, değerler dengelenir, çalışmayan özellik acımadan çıkarılır |
 | ⏳ Teslim | **Kod dondurma: yeni özellik yok.** Demo videosu, proje açıklaması, Space Apps sitesine yükleme |
@@ -77,7 +72,6 @@ NASA görsellerinin çoğu serbestçe kullanılabilir (images.nasa.gov); kaynakl
 
 - [x] Çalışan Streamlit linki: https://space-mission-game.streamlit.app/
 - [ ] GitHub reposu (public)
-- [ ] 2 dakikalık demo videosu: problem → oyun nasıl oynanır → takım modu → hangi NASA görevlerinden ilham alındı
+- [ ] 2 dakikalık demo videosu: problem → oyun nasıl oynanır → hangi NASA görevlerinden ilham alındı
 - [ ] Proje açıklaması (İngilizce): hangi mühendislik kararlarını öğretiyor (bütçe, takvim, kütle,
-      güç, batarya, radyasyon, iletişim, veri, yönelim, kapsama, görev ömrü, yörünge, takım çalışması
-      ve ödünleşim)
+      güç, batarya, radyasyon, iletişim, veri, yönelim, kapsama, görev ömrü, yörünge ve ödünleşim)
