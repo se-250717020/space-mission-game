@@ -1,5 +1,5 @@
 """
-data.py  —  SAHİBİ: 1. Kişi (NASA Araştırmacısı ve Veri Sorumlusu)
+data.py  —  SAHİBİ: 4. Kişi
 ================================================================
 Oyundaki TÜM sabit veriler burada durur: görevler, yörüngeler, roketler,
 enerji sistemleri, radyasyon kalkanları, bilimsel cihazlar, antenler,
@@ -24,7 +24,7 @@ Birimler: *_musd = milyon USD, *_kg = kg, *_w = Watt,
           *_gb_per_day = günde gigabayt, *_years = yıl.
 Sayılar eğitim amaçlı yaklaşık değerlerdir.
 
-Kontrol: terminalde `python data.py` çalıştır → şema hatası varsa söyler.
+Kontrol: terminalde `python data.py` çalıştır -> şema hatası varsa söyler.
 """
 
 # ----------------------------------------------------------------
@@ -61,6 +61,22 @@ MISSIONS = {
         "fun_fact": "Some craters near the lunar south pole never see sunlight and are among "
                     "the coldest places in the Solar System, cold enough to trap water ice.",
     },
+    "venus_mapper": {
+        "name": "Venus Cloud & Surface Mapper",
+        "emoji": "🟡",
+        "target": "Venus",
+        "description": "Use radar to see through Venus's thick clouds and map active volcanoes.",
+        "budget_musd": 580,
+        "radiation_level": 2,
+        "solar_efficiency": 1.40,
+        "capacity_factor": 0.22,
+        "required_instrument_types": ["radar", "spectrometer"],
+        "min_science_points": 60,
+        "comms_range_required": 2,
+        "inspired_by": "NASA VERITAS & Magellan Mission",
+        "fun_fact": "Venus receives nearly twice as much sunlight as Earth, boosting solar "
+                    "panel output, but its dense atmosphere hides the surface from standard cameras.",
+    },
     "mars_orbiter": {
         "name": "Mars Orbiter",
         "emoji": "🔴",
@@ -79,6 +95,22 @@ MISSIONS = {
         "fun_fact": "Radar on Mars orbiters can see through the surface and has found thick "
                     "layers of buried water ice.",
     },
+    "psyche_asteroid": {
+        "name": "16 Psyche Metal World",
+        "emoji": "🪨",
+        "target": "Asteroid 16 Psyche",
+        "description": "Explore a unique metal-rich asteroid believed to be an exposed planetary core.",
+        "budget_musd": 850,
+        "radiation_level": 3,
+        "solar_efficiency": 0.14,
+        "capacity_factor": 0.11,
+        "required_instrument_types": ["camera", "magnetometer", "spectrometer"],
+        "min_science_points": 80,
+        "comms_range_required": 3,
+        "inspired_by": "NASA Psyche Discovery Mission",
+        "fun_fact": "16 Psyche orbits in the main asteroid belt between Mars and Jupiter, where "
+                    "sunlight is only 14% as intense as at Earth.",
+    },
     "europa_explorer": {
         "name": "Europa Explorer",
         "emoji": "🧊",
@@ -96,6 +128,22 @@ MISSIONS = {
         "inspired_by": "NASA Europa Clipper",
         "fun_fact": "Jupiter's radiation is so intense that spacecraft like Juno and Europa "
                     "Clipper keep their electronics inside thick metal vaults.",
+    },
+    "titan_explorer": {
+        "name": "Titan Organic Explorer",
+        "emoji": "🟠",
+        "target": "Titan (moon of Saturn)",
+        "description": "Study Titan's dense nitrogen-methane atmosphere and icy crust.",
+        "budget_musd": 1350,
+        "radiation_level": 3,
+        "solar_efficiency": 0.011,
+        "capacity_factor": 0.04,
+        "required_instrument_types": ["camera", "spectrometer", "seismometer"],
+        "min_science_points": 85,
+        "comms_range_required": 3,
+        "inspired_by": "NASA Dragonfly & Cassini-Huygens",
+        "fun_fact": "At Saturn's distance, sunlight is 90 times weaker than on Earth, making "
+                    "nuclear RTG generators essential for steady spacecraft power.",
     },
 }
 
@@ -179,6 +227,13 @@ ROCKETS = {
         "success_rate": 0.98,
         "description": "Cheap and reliable medium-lift rocket.",
     },
+    "vulcan_centaur": {
+        "name": "Vulcan Centaur",
+        "cost_musd": 115,
+        "leo_capacity_kg": 27200,
+        "success_rate": 0.96,
+        "description": "High-energy upper stage optimized for deep-space trajectories.",
+    },
     "atlas_v": {
         "name": "Atlas V 551",
         "cost_musd": 150,
@@ -192,6 +247,13 @@ ROCKETS = {
         "leo_capacity_kg": 63800,
         "success_rate": 0.96,
         "description": "Heavy-lift rocket for distant targets.",
+    },
+    "starship_heavy": {
+        "name": "Starship (Deep-Space)",
+        "cost_musd": 280,
+        "leo_capacity_kg": 100000,
+        "success_rate": 0.92,
+        "description": "Super heavy-lift launch vehicle with massive payload capacity.",
     },
     "sls": {
         "name": "SLS Block 1",
@@ -223,12 +285,26 @@ POWER_SYSTEMS = {
         "mass_kg": 120,
         "cost_musd": 40,
     },
+    "ultraflex_solar_wing": {
+        "name": "Mega Solar Wing (Clipper-Class)",
+        "type": "solar",
+        "power_output_w": 3200,
+        "mass_kg": 240,
+        "cost_musd": 85,
+    },
     "rtg": {
         "name": "RTG (Radioisotope Generator)",
         "type": "nuclear",
         "power_output_w": 110,
         "mass_kg": 45,
         "cost_musd": 100,
+    },
+    "nextgen_rtg": {
+        "name": "Next-Gen eMMRTG",
+        "type": "nuclear",
+        "power_output_w": 165,
+        "mass_kg": 55,
+        "cost_musd": 145,
     },
 }
 
@@ -243,11 +319,23 @@ RADIATION_SHIELDS = {
         "mass_kg": 0,
         "cost_musd": 0,
     },
+    "light_whipple_shield": {
+        "name": "Light Whipple Shield",
+        "protection_level": 1,
+        "mass_kg": 25,
+        "cost_musd": 5,
+    },
     "aluminum_plating": {
         "name": "Aluminum Plating",
         "protection_level": 2,
         "mass_kg": 50,
         "cost_musd": 10,
+    },
+    "polyethylene_shield": {
+        "name": "Polyethylene Hydrogen Shield",
+        "protection_level": 3,
+        "mass_kg": 110,
+        "cost_musd": 35,
     },
     "titanium_vault": {
         "name": "Titanium Electronics Vault",
@@ -296,6 +384,14 @@ INSTRUMENTS = {
         "cost_musd": 50,
         "science_points": 25,
         "data_gb_per_day": 2.0,
+    },
+    "mass_spectrometer": {
+        "name": "MASPEX Mass Spectrometer",
+        "type": "spectrometer",
+        "power_draw_w": 55,
+        "mass_kg": 45,
+        "cost_musd": 75,
+        "science_points": 38,
     },
     "ground_radar": {
         "name": "Ground-Penetrating Radar",
@@ -361,6 +457,14 @@ COMMS_SYSTEMS = {
         "cost_musd": 15,
         "downlink_gb_per_day": 15.0,
     },
+    "medium_gain_with_backup": {
+        "name": "Medium-Gain Antenna + Backup",
+        "range_level": 2,
+        "has_backup": True,
+        "power_draw_w": 38,
+        "mass_kg": 22,
+        "cost_musd": 25,
+    },
     "high_gain_antenna": {
         "name": "High-Gain Antenna",
         "range_level": 3,
@@ -393,8 +497,8 @@ COMMS_RANGE_LABELS = {
 # ----------------------------------------------------------------
 # probability : her fırlatmada bu olayın yaşanma ihtimali (0.0 - 1.0)
 # protection  : neyin koruduğu
-#     "shield_margin" → kalkan seviyesi görevin istediğinden YÜKSEKSE (veya 5 ise) korur
-#     "backup_comms"  → iletişim sisteminde yedek anten (has_backup) varsa korur
+#     "shield_margin" -> kalkan seviyesi görevin istediğinden YÜKSEKSE (veya 5 ise) korur
+#     "backup_comms"  -> iletişim sisteminde yedek anten (has_backup) varsa korur
 SPACE_EVENTS = {
     "solar_storm": {
         "name": "Solar Storm",
@@ -410,6 +514,13 @@ SPACE_EVENTS = {
         "survive_message": "A micrometeoroid broke the main antenna, but the backup antenna took over.",
         "fail_message": "A micrometeoroid destroyed the antenna and contact was lost! "
                         "A backup antenna would have saved the mission.",
+    },
+    "cosmic_ray_burst": {
+        "name": "Cosmic Ray Burst",
+        "probability": 0.10,
+        "protection": "shield_margin",
+        "survive_message": "High-energy cosmic rays hit the spacecraft, but extra shielding prevented data corruption.",
+        "fail_message": "High-energy cosmic rays corrupted the flight computer! Stronger shielding was needed.",
     },
 }
 
