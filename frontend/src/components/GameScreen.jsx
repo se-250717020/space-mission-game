@@ -1,0 +1,154 @@
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { postDesign, postLaunch } from '../api.js';
+import { audio, SFX } from '../sound.js';
+import { CHECK_WORDS, DELTA_WORDS } from '../words.js';
+import Workshop from './Workshop.jsx';
+import Dashboard from './Dashboard.jsx';
+import InfoPanel from './InfoPanel.jsx';
+import LaunchSequence from './LaunchSequence.jsx';
+import MiniGame from './MiniGame.jsx';
+import Report from './Report.jsx';
+
+// Oyun ekranı: 3 kolon (atölye · sahne + LAUNCH · bilgi). Tüm sayılar backend'den (calculations.py) gelir.
+export default function GameScreen({ gameData, player, difficulty, settings, setSettings, onMenu, go }) {
+  const [state, setState] = useState(null);          // /api/design cevabı
+  const [focus, setFocus] = useState({ category: 'mission' });
+  const [toast, setToast] = useState(null);
+  const [error, setError] = useState('');
+  const [phase, setPhase] = useState('design');       // design | launch | game | report
+  const [flight, setFlight] = useState(null);         // /api/launch cevabı
+  const [gameScore, setGameScore] = useState(null);
+  const [launching, setLaunching] = useState(false);
+  const latest = useRef(null);
+  const queue = useRef(Promise.resolve());
+  const toastTimer = useRef(null);
+
+  useEffect(() => {
+    postDesign({ mission: Object.keys(gameData.missions)[0], difficulty })
+      .then((s) => { latest.current = s; setState(s); })
+      .catch((e) => setError(e.message));
+  }, [gameData, difficulty]);
+
+  const showImpact = (impact) => {
+    if (!impact || !impact.headline) return;
+    const nameToId = Object.fromEntries(Object.entries(gameData.check_names).map(([id, n]) => [n, id]));
+    const words = impact.deltas.slice(0, 4).map((d) => {
+      const [up, down] = DELTA_WORDS[d.label] || [`${d.label} up`, `${d.label} down`];
+      return d.delta > 0 ? up : down;
+    });
+    const problems = impact.new_problems.map((n) => CHECK_WORDS[nameToId[n]]?.[2]).filter(Boolean);
+    const fixed = impact.solved.map((n) => CHECK_WORDS[nameToId[n]]?.[1]).filter(Boolean);
+    const kind = problems.length ? 'bad' : fixed.length ? 'good' : 'info';
+    if (kind === 'bad') SFX.full(); else if (kind === 'good') SFX.chime();
+    setToast({ id: Date.now(), kind, text: words.join(' · ') || impact.headline, problems, fixed });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), problems.length ? 4500 : 2800);
+  };
+
+  // Değişiklikler sırayla gönderilir (hızlı tıklamada biri diğerini ezmesin)
+  const change = (key, value, focusInfo) => {
+    audio(); SFX.pick();
+    if (focusInfo) setFocus(focusInfo);
+    queue.current = queue.current.then(async () => {
+      const next = await postDesign({ selection: latest.current.selection, key, value });
+      latest.current = next;
+      setState(next);
+      showImpact(next.impact);
+    }).catch((e) => setError(e.message));
+  };
+
+  const launch = async () => {
+    if (launching) return;
+    audio(); SFX.click();
+    setLaunching(true);
+    try {
+      await queue.current;
+      const result = await postLaunch(latest.current.selection, player);
+      setFlight(result);
+      setGameScore(null);
+      setPhase('launch');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  if (!state) {
+    return (
+      <div className="starry grid h-full place-items-center text-center">
+        {error ? <p className="text-bad">⚠️ {error}</p>
+          : <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: 'linear' }} className="text-5xl">🛠️</motion.div>}
+      </div>
+    );
+  }
+
+  const design = state.selection;
+  const diff = gameData.difficulties[design.difficulty];
+  const away = phase !== 'design';
+
+  return (
+    <div className="relative flex h-full flex-col bg-void">
+      {/* Üst çubuk */}
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
+        <button onClick={() => { SFX.click(); onMenu(); }} className="rounded-lg border border-line px-3 py-1 text-sm font-bold hover:border-cyan">⬅️ Menu</button>
+        <div className="hidden font-display text-sm font-black tracking-wider sm:block">
+          SPACE <span className="text-nasa">MISSION</span> DESIGNER
+        </div>
+        <div className="ml-auto flex items-center gap-2 text-sm">
+          <span className="rounded-full bg-panel2 px-3 py-1 font-bold">👩‍🚀 {player}</span>
+          <span className="rounded-full bg-panel2 px-3 py-1 font-bold">{diff.emoji} {diff.name}</span>
+          <button onClick={() => setSettings({ ...settings, sound: !settings.sound })}
+                  className="rounded-full bg-panel2 px-3 py-1" aria-label="Sound on or off">{settings.sound ? '🔊' : '🔇'}</button>
+        </div>
+      </header>
+
+      {error && (
+        <div className="flex items-center gap-2 bg-bad/20 px-3 py-1 text-sm text-bad">
+          ⚠️ {error} <button className="ml-auto underline" onClick={() => setError('')}>OK</button>
+        </div>
+      )}
+
+      {/* 3 kolon: fırlatmada arkada kalır, hafifçe bulanıklaşır */}
+      <motion.main animate={{ scale: away ? 0.96 : 1, filter: away ? 'blur(6px)' : 'blur(0px)', opacity: away ? 0.4 : 1 }}
+                   transition={{ duration: 0.6, ease: 'easeInOut' }}
+                   className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-3 lg:content-stretch lg:grid-cols-[minmax(300px,25rem)_minmax(0,1fr)_minmax(280px,23rem)] lg:overflow-hidden">
+        <Workshop gameData={gameData} state={state} change={change} setFocus={setFocus} />
+        <Dashboard gameData={gameData} state={state} onLaunch={launch} launching={launching} />
+        <InfoPanel gameData={gameData} state={state} focus={focus} />
+      </motion.main>
+
+      {/* Değişikliğin bedeli (bildirim) */}
+      <AnimatePresence>
+        {toast && phase === 'design' && (
+          <motion.div key={toast.id} initial={{ opacity: 0, y: 30, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 20 }} transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+                      className={`pointer-events-none fixed bottom-4 left-1/2 z-40 w-[min(92vw,30rem)] -translate-x-1/2 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur
+                        ${toast.kind === 'bad' ? 'border-bad bg-[#2a0c14]/95' : toast.kind === 'good' ? 'border-ok bg-[#0a2620]/95' : 'border-line bg-panel2/95'}`}>
+            <div className="font-bold">🛠️ {toast.text}</div>
+            {toast.problems.length > 0 && <div className="text-sm text-[#ffb3ba]">🚨 Uh-oh: {toast.problems.join(', ')}!</div>}
+            {toast.fixed.length > 0 && <div className="text-sm text-ok">🎉 Fixed: {toast.fixed.join(', ')}</div>}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fırlatma → mini oyun → rapor */}
+      <AnimatePresence>
+        {phase === 'launch' && flight && (
+          <LaunchSequence key="launch" flight={flight} gameData={gameData} selection={design} animateOn={settings.animate}
+                          onPlay={() => setPhase('game')} onReport={() => setPhase('report')} onWorkshop={() => setPhase('design')} />
+        )}
+        {phase === 'game' && flight && (
+          <MiniGame key="game" params={flight.minigame} craft={flight.art.craft} target={gameData.missions[design.mission].target}
+                    player={player} onExit={(score) => { setGameScore(score); setPhase('report'); }} />
+        )}
+        {phase === 'report' && flight && (
+          <Report key="report" flight={flight} gameData={gameData} gameScore={gameScore}
+                  onWorkshop={() => setPhase('design')} onMenu={onMenu} onLeaderboard={() => go('leaderboard')}
+                  onFly={() => setPhase('game')} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

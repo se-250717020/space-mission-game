@@ -32,9 +32,11 @@ Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geli�
 | `app.py` | Streamlit ekranı, hesap YOK |
 | `artwork.py` | Saf SVG çizimleri (sadece `data`'yı okur, hesap ve `streamlit` YOK): her rokete özgü görünüm (`rocket_image`), seçilen parçalara göre değişen uzay aracı (`spacecraft_image`), atölye sahnesi (`workshop_scene`) |
 | `assets/flight.html` | Gerçekçi fırlatma animasyonu + mini oyun (saf HTML5 Canvas / Vanilla JS, Web Audio sesleri, sesli geri sayım). `app.py` içindeki `__CONFIG__` yerine JSON ayarları koyar |
+| `backend/main.py` | FastAPI sunucusu (React sürümü), hesap YOK: `data.py` + `calculations.py` + `artwork.py`'yi JSON olarak sunar (bölüm 9) |
+| `frontend/` | React + Vite + Tailwind + Framer Motion arayüzü; sayıları sadece backend'den alır, ekran kelime tabloları `frontend/src/words.js` |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
-Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`.
+Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (React sürümü: → `backend/main.py` → `frontend/`).
 `app.py` sayıları **sadece** `calculations.py`'den ister, listeleri `data.py`'den okur.
 
 ## 3. Değişmez kurallar
@@ -272,3 +274,20 @@ python data.py            # ✅ görmeli
 python calculations.py    # hatasız bitmeli
 python -m streamlit run app.py   # oyunu baştan sona oyna, kırmızı hata kutusu olmamalı
 ```
+
+## 9. Sözleşme: `backend/main.py` (React + FastAPI sürümü)
+
+`app.py`'deki kural burada da geçerli: backend hesap yapmaz, her sayı `calculations.py`'den gelir.
+`data.py` ve `calculations.py` repo kökünde kalır; backend onları `sys.path` ile içe aktarır.
+CORS açık (`allow_origins=["*"]`). Geliştirmede Vite `/api`'yi `127.0.0.1:8000`'e yönlendirir.
+
+| Uç nokta | Gövde | Döndürür |
+|---|---|---|
+| `GET /api/game-data` | — | `missions`, `objectives`, `orbits`, `parts` (`rocket`, `power`, `battery`, `computer`, `adcs`, `shield`, `instruments`, `comms`, `ground_station`), `instrument_type_labels`, `comms_range_labels`, `difficulties`, `default_difficulty`, `design_twists`, `space_events`, `check_ids`, `check_names`, `check_lessons`, `glossary`, `real_missions`, `max_power_units`, `selection_keys`, `rocket_art` ({roket id: `artwork.rocket_image`}) |
+| `POST /api/design` | Yeni oyun: `{"mission", "difficulty"}` · Değişiklik: `{"selection", "key", "value"}` (`key` ∈ `SELECTION_KEYS`; `"twist": "random"` rastgele sürpriz) | DESIGN: `selection`, `evaluation`, `gauges`, `warnings`, `requirements`, `options` ({kategori: `part_options`}), `ratings` ({kategori: `part_ratings`}), `game_feel`, `cost`, `impact` (`change_impact` veya null), `art` (`scene`: `workshop_scene` HTML'i, `craft`: `spacecraft_image`) |
+| `POST /api/launch` | `{"selection", "player_name", "save_score"=true}` | `launch` (`simulate_launch`), `evaluation`, `analysis`, `real_mission`, `timeline`, `minigame`, `design_code`, `leaderboard_entry` (kaydedildiyse), `art` (`rocket`, `craft`) |
+| `GET /api/leaderboard?mission=&difficulty=&limit=10` | — | `rank_leaderboard` listesi (`backend/leaderboard.json`, GitHub'a gitmez) |
+
+Değişiklik kuralları `app.py`'deki `apply_change` ile aynı: zorluk değişince `fit_to_difficulty` +
+(Hard'da) yeni sürpriz, görev değişince yörünge ve hedefler sıfırlanır, sonuç `normalize_selection`'dan geçer.
+Geçersiz id veya anahtar → HTTP 400.

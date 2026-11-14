@@ -24,9 +24,11 @@ ayrıntılar "📚 Why? (Learn more)" kutularında.
 | `app.py`, `.streamlit/config.toml` | Streamlit arayüzü (karanlık uzay teması, tek kişilik, çocuk dostu): ana menü (isim, zorluk, Leaderboard, Space School, Options), 3 kolonlu oyun ekranı (sol atölye, orta gösterge paneli + LAUNCH, sağ Space School bilgileri), rapor |
 | `artwork.py` | Roket ve uzay aracı çizimleri (SVG): her roketin kendi görünümü, seçtiğin parçalar uzay aracında görünür |
 | `assets/flight.html` | Gerçekçi fırlatma animasyonu (sesli geri sayım, ateşleme sesi, duman, kademe ayrılması) + uzay aracı uçurma mini oyunu (saf JavaScript Canvas, sesler Web Audio ile üretilir) |
+| `backend/main.py`, `backend/requirements.txt` | React sürümü için FastAPI sunucusu: `data.py` + `calculations.py` + `artwork.py`'yi HTTP ile sunar (hesap yapmaz) |
+| `frontend/` | React + Vite + Tailwind + Framer Motion arayüzü: ana menü, 3 kolonlu oyun ekranı, Framer Motion fırlatma animasyonu (sarsıntı, kalkış, kademe ayrılması, gezegenler arası yol), canvas mini oyun, rapor |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md`, `requirements.txt` | Dokümanlar |
 
-Bağlantı zinciri: `data.py` → `calculations.py` → `app.py`. Ortak dil
+Bağlantı zinciri: `data.py` → `calculations.py` → `app.py` (React sürümünde `backend/main.py` → `frontend/`). Ortak dil
 `selection` sözlüğüdür (şeması `AI_CONTEXT.md` ve `calculations.py` dosyasının en üstünde).
 
 ## Oyunun kuralları (kısaca)
@@ -150,6 +152,42 @@ python calculations.py
 ```
 
 VS Code'a sanal ortamı tanıtmak için: `Ctrl+Shift+P` → **Python: Select Interpreter** → `.venv` olanı seç.
+
+### 3b. Yeni sürüm: React + FastAPI (`backend/` + `frontend/`)
+
+Aynı oyunun React arayüzlü sürümü. `data.py`, `calculations.py` ve `artwork.py` aynen kullanılır;
+`backend/main.py` (FastAPI) bunları HTTP üzerinden sunar, `frontend/` (React + Vite + Tailwind +
+Framer Motion) ekranı çizer. Streamlit sürümü (`app.py`) canlı sitede çalışmaya devam ediyor.
+[Node.js](https://nodejs.org) (LTS) kurulu olmalı. İki ayrı terminal aç (VS Code'da terminalin sağ
+üstündeki **+**). Repo klasöründe:
+
+Terminal 1: backend (bir kez kurulum, sonra çalıştırma):
+
+```bash
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
+
+```bash
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000
+```
+
+Terminal 2: frontend:
+
+```bash
+cd frontend
+```
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+Tarayıcıda `http://localhost:5173` aç. Vite, `/api` isteklerini 8000 portundaki backend'e yönlendirir.
+`npm install` sadece ilk sefer gerekir. API: `GET /api/game-data`, `POST /api/design`,
+`POST /api/launch`, `GET /api/leaderboard` (ayrıntı: `AI_CONTEXT.md` bölüm 9).
 
 ## 4. Çalışma şekli (14 Kasım 2026'dan beri)
 

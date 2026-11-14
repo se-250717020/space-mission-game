@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/* Renkler ve yazı tipleri: Tailwind sınıfları olarak da kullanılır (bg-panel, text-cyan, font-display ...) */
+@theme {
+  --font-display: "Orbitron", system-ui, sans-serif;
+  --font-body: "Nunito", system-ui, sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+  --color-void: #050914;
+  --color-panel: #0c1428;
+  --color-panel2: #121d38;
+  --color-line: #22325a;
+  --color-cyan: #4fd1ff;
+  --color-nasa: #fc3d21;
+  --color-amber: #ffb347;
+  --color-ok: #22d3a6;
+  --color-warn: #ffc94d;
+  --color-bad: #ff4d5e;
+  --color-muted: #8a97b5;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-void);
+  color: #e6ecf8;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+::selection { background: #4fd1ff55; }
+
+/* İnce kaydırma çubuğu */
+.thin-scroll { scrollbar-width: thin; scrollbar-color: #2a3a66 transparent; }
+
+/* Metal atölye panelleri: köşelerde vida */
+.metal {
+  background:
+    radial-gradient(circle at 10px 10px, #3a4a70 2px, transparent 3px),
+    radial-gradient(circle at calc(100% - 10px) 10px, #3a4a70 2px, transparent 3px),
+    linear-gradient(180deg, #0f1932 0%, #0a1226 100%);
+  border: 1px solid var(--color-line);
+}
+.hazard {
+  background: repeating-linear-gradient(-45deg, #ffb347 0 10px, #11182c 10px 20px);
+}
+.starry {
+  background:
+    radial-gradient(1px 1px at 20% 30%, #fff8, transparent),
+    radial-gradient(1px 1px at 70% 20%, #fff8, transparent),
+    radial-gradient(1.5px 1.5px at 40% 80%, #fff9, transparent),
+    radial-gradient(1px 1px at 85% 65%, #fff7, transparent),
+    radial-gradient(1px 1px at 10% 70%, #fff6, transparent),
+    radial-gradient(ellipse at 50% -10%, #1a2b5e 0%, #050914 65%);
+}
+
+/* ---- Atölye sahnesi (artwork.workshop_scene SVG'si; sınıflar Python tarafında) ---- */
+.scene { border-radius: 16px; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, #18295a 0%, #070c1c 70%); }
+.scene-svg { display: block; width: 100%; height: 100%; }
+.scene-svg .rk.lvl-danger { animation: strain .22s linear infinite; }
+.scene-svg .rk.lvl-warning { animation: strain .6s linear infinite; }
+@keyframes strain { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-1.5px); } 75% { transform: translateX(1.5px); } }
+.scene-svg .part, .scene-svg .target, .scene-svg .rk-wrap, .scene-svg .vapor { transform-box: fill-box; transform-origin: center; }
+.scene-svg .rk-wrap { transform-origin: center bottom; }
+.scene-svg .part.pop-a, .scene-svg .part.pop-b, .scene-svg .target.pop-a, .scene-svg .target.pop-b { animation: popA 1s cubic-bezier(.2,.8,.3,1.2); }
+.scene-svg .rk-wrap.pop-a, .scene-svg .rk-wrap.pop-b { animation: craneA 1.1s cubic-bezier(.25,.8,.3,1); }
+@keyframes popA { 0% { transform: scale(.4); opacity: 0; } 45% { transform: scale(1.22); opacity: 1; filter: drop-shadow(0 0 6px #4fd1ff) brightness(1.5); } 100% { transform: scale(1); filter: none; } }
+@keyframes craneA { 0% { transform: translateY(60px) scaleY(.85); opacity: 0; } 55% { opacity: 1; filter: drop-shadow(0 0 10px #ffb070); } 80% { transform: translateY(-4px); } 100% { transform: none; filter: none; } }
+.scene-svg .vapor { fill: #dfe8f5; opacity: 0; animation: vapor 3.4s ease-out infinite; }
+.scene-svg .v1 { animation-delay: 1.1s; } .scene-svg .v2 { animation-delay: .5s; animation-duration: 4.2s; } .scene-svg .v3 { animation-delay: 2s; animation-duration: 4.6s; }
+@keyframes vapor { 0% { opacity: 0; transform: scale(.4); } 20% { opacity: .55; } 100% { opacity: 0; transform: translate(8px,-14px) scale(2.2); } }
+.scene-svg .beam { opacity: .55; animation: beam 5s ease-in-out infinite; } .scene-svg .beam.b2 { animation-delay: 2.2s; }
+@keyframes beam { 0%,100% { opacity: .5; } 45% { opacity: .75; } 50% { opacity: .4; } 55% { opacity: .7; } }
+.scene-svg .blink { animation: blinkDot 1.4s steps(2) infinite; } @keyframes blinkDot { 50% { opacity: .15; } }
+.scene-svg .craft { animation: float 4.5s ease-in-out infinite; } @keyframes float { 50% { transform: translateY(-5px); } }
+.scene-svg .bubble { font-family: var(--font-body); font-size: 15px; font-weight: 800; text-anchor: middle; fill: #ffb3ba; animation: float 1.6s ease-in-out infinite; }
+.scene-svg .bubble.warn { fill: #ffd98a; }
+.scene-svg .stand-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; fill: #7fdcff; text-anchor: middle; }
+
+/* LAUNCH düğmesi nefes alır */
+@keyframes launchGlow { 0%,100% { box-shadow: 0 0 18px rgba(252,61,33,.45); } 50% { box-shadow: 0 0 42px rgba(255,138,61,.8); } }
+.launch-glow { animation: launchGlow 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-svg *, .launch-glow { animation: none !important; }
+}

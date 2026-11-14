@@ -16,6 +16,8 @@ Notes for Claude Code sessions run by the Tech Lead. Since 2026-11-14 the whole 
 | `app.py`, `.streamlit/config.toml` | Whole Streamlit UI (solo only; dark theme, pages in `PAGES`, CSS at the end of `app.py`; on-screen word tables `CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`, `GAME_FEEL_WORDS`, `CATEGORY_KID`) |
 | `artwork.py` | Pure SVG art (reads `data` only, no streamlit): unique look per rocket (`rocket_image`), spacecraft that changes with the chosen parts (`spacecraft_image`), workshop scene (`workshop_scene`) |
 | `assets/flight.html` | Launch animation + mini game (vanilla JS, no libraries); `app.py` replaces `__CONFIG__` with JSON (incl. `rocket_img` / `craft_img` from artwork). When the animation ends it reveals the report itself (`revealReport`); `REPORT_DELAY_S` in `app.py` is only the CSS fallback and must stay longer than the animation |
+| `backend/main.py` | FastAPI server for the React version (no math): `GET /api/game-data`, `POST /api/design`, `POST /api/launch`, `GET /api/leaderboard`; imports the root `data.py` / `calculations.py` / `artwork.py` (AI_CONTEXT.md section 9) |
+| `frontend/` | React + Vite + Tailwind + Framer Motion UI (menu, 3-column screen, Framer Motion launch, canvas mini game, report). On-screen word tables in `frontend/src/words.js`. The Streamlit `app.py` still runs the live site |
 | `AI_CONTEXT.md`, `requirements.txt`, `.gitignore`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md` | Contract and docs |
 
 Data flow: `data.py` → `calculations.py` → `app.py` (`artwork.py` reads `data.py` for drawings). The shared contract is `AI_CONTEXT.md`: every data key, the 15-key `selection` dict (`data.SELECTION_KEYS`; `calculations.normalize_selection` fills missing keys so old 8-key selections still work), public functions and their result dicts. `data.CHECK_IDS` fixes the 12 check ids in order; each difficulty's `active_checks` decides which are scored.
@@ -33,7 +35,7 @@ Data flow: `data.py` → `calculations.py` → `app.py` (`artwork.py` reads `dat
 .venv\Scripts\python.exe calculations.py  # self-test must pass
 .venv\Scripts\python.exe -m streamlit run app.py
 ```
-- Preview config is in `.claude/launch.json` (name `streamlit`, port 8502). Streamlit caches imported modules, so restart the server after editing `data.py` or `calculations.py`.
+- Preview config is in `.claude/launch.json` (names `streamlit` port 8502, `backend` port 8000, `frontend` port 5173). React version: `cd frontend; npm run build` must pass. Streamlit caches imported modules, so restart the server after editing `data.py` or `calculations.py`.
 - Check the UI at desktop and mobile width (preset `mobile`).
 - Balance rule: every mission must be passable by at least one design on every difficulty and twist, but not trivially.
 

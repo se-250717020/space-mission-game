@@ -18,3 +18,7 @@ Thumbs.db
 
 # Oyun sunucusunun skor tablosu (her bilgisayarda ayrı, GitHub'a gitmez)
 leaderboard.json
+
+# React arayüzü (npm install ile kurulur, derleme çıktısı)
+node_modules/
+frontend/dist/
