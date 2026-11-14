@@ -11,7 +11,8 @@ güç payı azsa enerji çabuk biter, iyi anten veriyi hızlı yollar. Tek kişi
 ayrıntılar "📚 Why? (Learn more)" kutularında.
 
 - **GitHub:** https://github.com/se-250717020/space-mission-game
-- **Canlı oyun (Streamlit):** https://space-mission-game.streamlit.app/
+- **Canlı oyun (React + FastAPI, Render):** https://space-mission-game.onrender.com
+  (ücretsiz plan: bir süre kimse girmezse ilk açılış ~1 dakika sürer)
 - **Ekip kuralları ve çalışma şekli:** **[TEAM_RULES.md](TEAM_RULES.md)**
 - **Sözleşme (tüm isimler, fonksiyonlar):** **[AI_CONTEXT.md](AI_CONTEXT.md)**
 
@@ -226,4 +227,5 @@ Yerelde aynısını denemek: `cd frontend; npm run build`, sonra repo kökünden
 
 - [x] GitHub reposu açıldı ve iskelet ilk kez push edildi.
 - [x] 3 arkadaş **Settings → Collaborators** ile eklendi.
-- [x] Streamlit Cloud'a deploy edildi ve link README'ye yazıldı.
+- [x] Streamlit Cloud'a deploy edildi ve link README'ye yazıldı (eski sürüm, artık kullanılmıyor).
+- [x] React + FastAPI sürümü Render'a deploy edildi (15 Kasım 2026): https://space-mission-game.onrender.com
