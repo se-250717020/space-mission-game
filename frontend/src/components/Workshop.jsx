@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { svgUrl } from '../api.js';
 import { SFX } from '../sound.js';
@@ -10,7 +10,7 @@ import Planet, { planetKey } from './Planet.jsx';
 const TABS = [['mission', '🎯 Mission'], ['rocket', '🚀 Rocket'], ['parts', '🛠️ Parts']];
 
 // 1-3 puanı emoji ile (sayı yok)
-function Stars({ ratings, fields }) {
+const Stars = memo(function Stars({ ratings, fields }) {
   if (!ratings) return null;
   return (
     <span className="flex flex-wrap gap-x-2 text-xs text-muted">
@@ -21,11 +21,13 @@ function Stars({ ratings, fields }) {
       ))}
     </span>
   );
-}
+});
 
+// Not: eskiden burada "layout" vardı; framer her çizimde TÜM kartların yerini ölçüyordu (çok pahalı).
+// Kartlar yer değiştirmediği için gerek yok; hover/tap zaten sadece transform kullanır.
 function Card({ selected, onClick, onHover, children, className = '' }) {
   return (
-    <motion.button layout whileHover={{ x: 3 }} whileTap={{ scale: 0.98 }} onClick={onClick} onMouseEnter={onHover} onFocus={onHover}
+    <motion.button whileHover={{ x: 3 }} whileTap={{ scale: 0.98 }} onClick={onClick} onMouseEnter={onHover} onFocus={onHover}
                    className={`relative w-full rounded-xl border p-3 text-left transition-colors ${selected
                      ? 'border-cyan bg-cyan/10 shadow-[inset_3px_0_0_#4fd1ff]' : 'border-line bg-void/40 hover:border-cyan/50'} ${className}`}>
       {children}
@@ -36,15 +38,61 @@ function Card({ selected, onClick, onHover, children, className = '' }) {
 
 const Title = ({ children }) => <h3 className="mb-2 mt-4 font-display text-xs tracking-widest text-muted first:mt-0">{children}</h3>;
 
-export default function Workshop({ gameData, state, change, setFocus }) {
+// Her sunucu cevabında puan nesneleri yeniden oluşur ama içerik çoğu zaman aynıdır: içerikle karşılaştır
+const sameRatings = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+};
+
+// Tek parça kartı: sadece seçimi ya da puanı değişince yeniden çizilir
+const PartCard = memo(function PartCard({ cat, id, part, selected, ratings, rocketSrc, typeText, onPick, onFocus }) {
+  const multi = cat === 'instruments';
+  return (
+    <Card selected={selected} onClick={() => onPick(cat, id, selected)} onHover={() => onFocus(cat, id)}>
+      <div className="flex items-center gap-3 pr-6">
+        {rocketSrc ? (
+          <img src={rocketSrc} alt="" className="h-16 w-8 shrink-0 object-contain" decoding="async" />
+        ) : (
+          <span className="text-2xl">{multi ? INSTRUMENT_ICONS[part.type] || '🔬' : CATEGORY_ICONS[cat]}</span>
+        )}
+        <div className="min-w-0">
+          <div className="font-extrabold leading-tight">{part.name}</div>
+          {typeText && <div className="text-xs text-cyan">{typeText}</div>}
+          <Stars ratings={ratings} fields={KEY_RATINGS[cat]} />
+        </div>
+      </div>
+    </Card>
+  );
+}, (a, b) => a.selected === b.selected && a.id === b.id && a.cat === b.cat && a.part === b.part
+  && a.rocketSrc === b.rocketSrc && a.typeText === b.typeText && a.onPick === b.onPick && a.onFocus === b.onFocus
+  && sameRatings(a.ratings, b.ratings));
+
+function Workshop({ gameData, state, change, setFocus }) {
   const [tab, setTab] = useState('mission');
   const [group, setGroup] = useState('science');
   const design = state.selection;
   const mission = gameData.missions[design.mission];
   const advanced = gameData.difficulties[design.difficulty].advanced_parts;
-  const groups = PART_GROUPS.map((g) => ({ ...g, cats: g.cats.filter((c) => advanced || !ADVANCED_ONLY.has(c)) }))
-    .filter((g) => g.cats.length);
+  const groups = useMemo(() => PART_GROUPS.map((g) => ({ ...g, cats: g.cats.filter((c) => advanced || !ADVANCED_ONLY.has(c)) }))
+    .filter((g) => g.cats.length), [advanced]);
   const activeGroup = groups.find((g) => g.id === group) || groups[0];
+
+  // Roket resimleri (SVG → data URL) bir kez kodlanır; her çizimde encodeURIComponent çalışmaz
+  const rocketSrc = useMemo(() => Object.fromEntries(Object.entries(gameData.rocket_art).map(([id, a]) => [id, svgUrl(a.svg)])), [gameData]);
+
+  // Kart tıklaması en güncel tasarımı ref'ten okur; böylece fonksiyon sabit kalır (memo bozulmaz)
+  const designRef = useRef(design);
+  designRef.current = design;
+  const onPick = useCallback((cat, id, selected) => {
+    const d = designRef.current;
+    if (cat === 'instruments') {
+      const next = selected ? d.instruments.filter((i) => i !== id) : [...d.instruments, id];
+      change('instruments', next, { category: cat, id });
+    } else if (!selected) change(cat, id, { category: cat, id });
+  }, [change]);
+  const onFocus = useCallback((cat, id) => setFocus({ category: cat, id }), [setFocus]);
 
   const partList = (cat) => {
     const table = gameData.parts[cat];
@@ -53,28 +101,12 @@ export default function Workshop({ gameData, state, change, setFocus }) {
       <div className="space-y-2">
         {state.options[cat].map((id) => {
           const part = table[id];
-          const selected = multi ? design.instruments.includes(id) : design[cat] === id;
-          const onClick = () => {
-            if (multi) {
-              const next = selected ? design.instruments.filter((i) => i !== id) : [...design.instruments, id];
-              change('instruments', next, { category: cat, id });
-            } else if (!selected) change(cat, id, { category: cat, id });
-          };
           return (
-            <Card key={id} selected={selected} onClick={onClick} onHover={() => setFocus({ category: cat, id })}>
-              <div className="flex items-center gap-3 pr-6">
-                {cat === 'rocket' ? (
-                  <img src={svgUrl(gameData.rocket_art[id].svg)} alt="" className="h-16 w-8 shrink-0 object-contain" />
-                ) : (
-                  <span className="text-2xl">{multi ? INSTRUMENT_ICONS[part.type] || '🔬' : CATEGORY_ICONS[cat]}</span>
-                )}
-                <div className="min-w-0">
-                  <div className="font-extrabold leading-tight">{part.name}</div>
-                  {multi && <div className="text-xs text-cyan">{typeLabel(gameData.instrument_type_labels, part.type)}</div>}
-                  <Stars ratings={state.ratings[cat]?.[id]} fields={KEY_RATINGS[cat]} />
-                </div>
-              </div>
-            </Card>
+            <PartCard key={id} cat={cat} id={id} part={part} onPick={onPick} onFocus={onFocus}
+                      selected={multi ? design.instruments.includes(id) : design[cat] === id}
+                      ratings={state.ratings[cat]?.[id]}
+                      rocketSrc={cat === 'rocket' ? rocketSrc[id] : null}
+                      typeText={multi ? typeLabel(gameData.instrument_type_labels, part.type) : null} />
           );
         })}
       </div>
@@ -84,7 +116,7 @@ export default function Workshop({ gameData, state, change, setFocus }) {
   return (
     <section className="metal thin-scroll flex flex-col rounded-2xl lg:min-h-0 lg:overflow-y-auto">
       {/* Sekmeler */}
-      <div className="sticky top-0 z-10 flex gap-1 border-b border-line bg-[#0c1530]/95 p-2 backdrop-blur">
+      <div className="sticky top-0 z-10 flex gap-1 border-b border-line bg-[#0c1530] p-2">
         {TABS.map(([id, label]) => (
           <button key={id} onClick={() => { SFX.click(); setTab(id); setFocus({ category: id === 'mission' ? 'mission' : id === 'rocket' ? 'rocket' : activeGroup.cats[0] }); }}
                   className={`relative flex-1 rounded-lg px-2 py-2 text-sm font-extrabold ${tab === id ? 'text-white' : 'text-muted hover:text-white'}`}>
@@ -189,3 +221,5 @@ export default function Workshop({ gameData, state, change, setFocus }) {
     </section>
   );
 }
+
+export default memo(Workshop);

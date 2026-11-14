@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AnimatePresence, animate, motion, useAnimationFrame, useMotionValue, useMotionValueEvent, useTransform,
 } from 'framer-motion';
@@ -35,7 +35,7 @@ function Banner({ banner }) {
         <motion.div key={banner.id} className="pointer-events-none absolute inset-x-0 top-[26%] z-30 flex justify-center px-4 sm:top-[8%]"
                     initial={{ opacity: 0, y: -18, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 12, scale: 0.96 }} transition={{ duration: 0.4, ease: [0.2, 0.8, 0.3, 1] }}>
-          <div className="relative overflow-hidden rounded-2xl border bg-[#050914]/70 px-5 py-3 text-center shadow-2xl backdrop-blur-md sm:px-8"
+          <div className="relative overflow-hidden rounded-2xl border bg-[#050914]/85 px-5 py-3 text-center shadow-2xl sm:px-8"
                style={{ borderColor: `${banner.color}88`, boxShadow: `0 0 40px ${banner.color}33` }}>
             {/* Kartın üstünden geçen ışık */}
             <motion.div className="absolute inset-y-0 w-1/3 -skew-x-12 bg-white/10" initial={{ x: '-150%' }} animate={{ x: '350%' }}
@@ -51,20 +51,22 @@ function Banner({ banner }) {
 }
 
 // ---------------------------------------------------------------- Görev adımları (sol üst)
-function Steps({ rows: all }) {
+// Not: bu kutuların arkası her karede hareket ediyor; backdrop-blur her karede yeniden
+// hesaplanıyordu. Yerine biraz daha koyu, düz arka plan var.
+const Steps = memo(function Steps({ rows: all }) {
   const current = all.findIndex((r) => !r.state);
   // Telefonda sadece o anki adımın çevresi (5 satır) görünür
   const focus = current === -1 ? all.length - 1 : current;
   const start = window.innerWidth < 640 ? Math.max(0, Math.min(focus - 1, all.length - 5)) : 0;
   const rows = window.innerWidth < 640 ? all.slice(start, start + 5) : all;
   return (
-    <div className="absolute left-3 top-3 z-20 w-[min(15.5rem,58vw)] rounded-2xl border border-white/10 bg-[#050914]/65 p-2.5 backdrop-blur-md">
+    <div className="absolute left-3 top-3 z-20 w-[min(15.5rem,58vw)] rounded-2xl border border-white/10 bg-[#050914]/80 p-2.5">
       <div className="mb-1.5 font-display text-[10px] tracking-[0.25em] text-cyan">MISSION STEPS</div>
       <div className="space-y-1">
         {rows.map((r, i) => {
           const now = i + start === current;
           return (
-            <motion.div key={r.name} layout className={`flex items-center gap-2 rounded-lg px-1.5 py-0.5 text-[13px] font-bold sm:text-sm ${now ? 'bg-cyan/15' : ''}`}
+            <motion.div key={r.name} className={`flex items-center gap-2 rounded-lg px-1.5 py-0.5 text-[13px] font-bold sm:text-sm ${now ? 'bg-cyan/15' : ''}`}
                         animate={{ opacity: r.state || now ? 1 : 0.45 }}>
               <span className="w-5 text-center">
                 {r.state === 'ok' ? <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="inline-block">✅</motion.span>
@@ -79,7 +81,7 @@ function Steps({ rows: all }) {
       </div>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------- Alev (katmanlı: parıltı, alev, çekirdek, şok elmasları)
 function Plume({ refEl, diamondsRef, top, width, vac }) {
@@ -88,9 +90,9 @@ function Plume({ refEl, diamondsRef, top, width, vac }) {
     ? 'radial-gradient(ellipse 50% 70% at 50% 0%, #ffffff 0%, #d4e0ff 18%, #7a95ff 42%, rgba(80,110,255,0) 72%)'
     : 'radial-gradient(ellipse 50% 70% at 50% 0%, #fffdf0 0%, #ffe9a8 12%, #ffad4a 30%, #ff5a1f 52%, rgba(255,60,20,0) 76%)';
   return (
-    <div ref={refEl} className="pointer-events-none absolute left-1/2" style={{ top, width: W, height: W * 6, marginLeft: -W / 2, transformOrigin: '50% 0%', opacity: 0 }}>
-      {/* Dış parıltı */}
-      <div className="absolute left-1/2 rounded-full" style={{ top: -W * 0.6, width: W * 4, height: W * 4.5, marginLeft: -W * 2, filter: 'blur(10px)', mixBlendMode: 'screen',
+    <div ref={refEl} className="pointer-events-none absolute left-1/2" style={{ top, width: W, height: W * 6, marginLeft: -W / 2, transformOrigin: '50% 0%', opacity: 0, willChange: 'transform, opacity' }}>
+      {/* Dış parıltı (zaten yumuşak bir gradyan: her karede yeniden hesaplanan blur filtresine gerek yok) */}
+      <div className="absolute left-1/2 rounded-full" style={{ top: -W * 0.6, width: W * 4, height: W * 4.5, marginLeft: -W * 2, mixBlendMode: 'screen',
             background: vac ? 'radial-gradient(circle at 50% 30%, rgba(140,170,255,.55), rgba(90,120,255,0) 65%)'
                             : 'radial-gradient(circle at 50% 30%, rgba(255,180,90,.7), rgba(255,110,40,0) 65%)' }} />
       {/* Ana alev */}
@@ -126,8 +128,69 @@ function Sparks({ bottom }) {
   );
 }
 
+// ---------------------------------------------------------------- Duman (tek canvas)
+// Eskiden her duman bulutu ayrı bir React/Framer elemanıydı (130'a kadar) ve her 90 ms'de bütün
+// sahne yeniden çiziliyordu. Şimdi bulutlar düz bir dizide tutulur, tek canvas'a çizilir; React hiç
+// yeniden çizim yapmaz. Bulut resimleri (gradyan) bir kez hazırlanıp önbellekte tutulur.
+const PUFF = 46;                 // bulutun temel çapı (px)
+const MAX_PUFFS = 160;
+const SPRITE = 64;
+const puffSprites = new Map();
+function puffSprite(warm, c) {
+  c = Math.round(c / 5) * 5;
+  const key = `${warm ? 1 : 0}-${c}`;
+  let cv = puffSprites.get(key);
+  if (cv) return cv;
+  cv = document.createElement('canvas');
+  cv.width = cv.height = SPRITE;
+  const x = cv.getContext('2d'), S = SPRITE;
+  x.beginPath(); x.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); x.clip();
+  const g = warm
+    ? x.createRadialGradient(S * 0.45, S * 0.65, 0, S * 0.45, S * 0.65, S * 0.851)
+    : x.createRadialGradient(S * 0.4, S * 0.4, 0, S * 0.4, S * 0.4, S * 0.849);
+  if (warm) {
+    g.addColorStop(0, 'rgba(255,190,130,.95)'); g.addColorStop(0.35, `rgb(${c},${c - 12},${c - 30})`);
+    g.addColorStop(0.6, `rgba(${c - 50},${c - 50},${c - 40},.5)`); g.addColorStop(0.72, `rgba(${c - 50},${c - 50},${c - 40},0)`);
+  } else {
+    g.addColorStop(0, `rgb(${c},${c},${Math.min(255, c + 8)})`); g.addColorStop(0.55, `rgba(${c - 40},${c - 40},${c - 30},.5)`);
+    g.addColorStop(0.72, `rgba(${c - 40},${c - 40},${c - 30},0)`);
+  }
+  x.fillStyle = g; x.fillRect(0, 0, S, S);
+  puffSprites.set(key, cv);
+  return cv;
+}
+const easeOut = (t) => 1 - Math.pow(1 - t, 1.8);
+const PUFF_ALPHA = [0, 0.92, 0.55, 0];   // eski Framer opaklık adımlarıyla aynı
+function puffAlpha(e) {
+  const f = e * 3, i = Math.min(2, Math.floor(f));
+  return PUFF_ALPHA[i] + (PUFF_ALPHA[i + 1] - PUFF_ALPHA[i]) * (f - i);
+}
+// puffs: { x, y, dx, dy, s, d, c, warm, born }; canvas = dünya katmanıyla aynı kutu
+function drawPuffs(ctx, puffs, time, w, h, groundH, worldY) {
+  ctx.clearRect(0, 0, w, h);
+  let n = 0;
+  for (let i = 0; i < puffs.length; i++) {
+    const p = puffs[i];
+    const t = (time - p.born) / (p.d * 1000);
+    if (t >= 1) continue;                                   // ömrü bitti → diziden çıkar
+    const e = easeOut(Math.max(0, t));
+    const size = PUFF * (0.4 + (p.s - 0.4) * e);
+    const cx = w / 2 + p.x + p.dx * e;
+    const cy = h - groundH - p.y - PUFF / 2 - p.dy * e + worldY;
+    if (cy - size / 2 > h + 40) continue;                    // kamera yükseldi, ekranın altında kaldı → bir daha görünmez, sil
+    puffs[n++] = p;                                           // yerinde sıkıştırma: yeni dizi oluşturmaz (çöp yok)
+    if (cy + size / 2 < 0 || cx + size / 2 < 0 || cx - size / 2 > w) continue;   // ekran dışı: çizme
+    const a = puffAlpha(e);
+    if (a <= 0.01) continue;
+    ctx.globalAlpha = a;
+    ctx.drawImage(puffSprite(p.warm, p.c), cx - size / 2, cy - size / 2, size, size);
+  }
+  puffs.length = n;
+  ctx.globalAlpha = 1;
+}
+
 // ---------------------------------------------------------------- 1) Rampa ve kalkış
-function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
+const PadScene = memo(function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
   const shakeRef = useRef(null);
   const plumeRef = useRef(null);
   const diamondsRef = useRef(null);
@@ -142,12 +205,14 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
   const [armOpen, setArmOpen] = useState(false);
   const [separated, setSeparated] = useState(false);
   const [boom, setBoom] = useState(null);
-  const [puffs, setPuffs] = useState([]);
+  const boomRef = useRef(false);
   const [sparkBursts, setSparkBursts] = useState([]);
   const [flying, setFlying] = useState(false);
-  const pending = useRef([]);
+  const smokeRef = useRef(null);                   // duman canvas'ı
+  const smokeSize = useRef({ w: 0, h: 0 });
+  const puffs = useRef([]);                        // duman bulutları (React state DEĞİL)
   const lastSpawn = useRef(0);
-  const lastFlush = useRef(0);
+  const lastTel = useRef(0);
 
   const alt = useMotionValue(0);                   // 0 = rampada · 1 = gökyüzünün çok üstünde
   const rocketH = Math.min(H * 0.5, 430);
@@ -165,9 +230,28 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
   const plumeW = Math.max(22, art.plume * 2 * k * 1.35);
 
   const mark = (name, ok) => setRows((r) => r.map((x) => (x.name === name ? { ...x, state: ok ? 'ok' : 'bad' } : x)));
-  const addPuffs = (list) => pending.current.push(...list.map((p) => ({ id: Math.random(), ...p })));
+  const addPuffs = (list) => {
+    const now = performance.now(), arr = puffs.current;
+    for (const p of list) arr.push({ ...p, born: now });
+    if (arr.length > MAX_PUFFS) arr.splice(0, arr.length - MAX_PUFFS);   // en eskiler atılır (sınırsız büyümesin)
+  };
+  const burstSparks = () => {
+    const id = Date.now() + Math.random();
+    setSparkBursts((b) => [...b, id]);
+    setTimeout(() => setSparkBursts((b) => b.filter((x) => x !== id)), 1400);   // bitince DOM'dan kaldır
+  };
+
+  // Duman canvas'ının boyutu: sadece pencere boyutu değişince (her karede ölçüm = layout zorlaması)
+  useEffect(() => {
+    const cv = smokeRef.current; if (!cv) return undefined;
+    const fit = () => { const w = cv.clientWidth, h = cv.clientHeight; smokeSize.current = { w, h }; cv.width = w; cv.height = h; };
+    fit();
+    const ro = new ResizeObserver(fit); ro.observe(cv);
+    return () => ro.disconnect();
+  }, []);
 
   // Her karede: sarsıntı, alev titremesi, motor sesi, duman, telemetri
+  // (sadece transform / opacity / canvas yazılır; React state'i değişmez)
   useAnimationFrame((time, delta) => {
     const dt = Math.min(0.05, delta / 1000);
     const s = shake.current;
@@ -184,7 +268,7 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
     if (glowRef.current) glowRef.current.style.opacity = String(e.level * clamp(1 - a * 4, 0, 1) * (0.75 + Math.random() * 0.25));
     engineSet(e.level * (1 - a * 0.75), 520 - a * 380);
     // Duman: yerde yanlara yayılan (alevle turuncu aydınlanan) bulut, havada roketin arkasında iz
-    if (e.level > 0 && !e.vac && !boom && time - lastSpawn.current > (a < 0.03 ? 40 : 65) && lift(a) < H * 1.4) {
+    if (e.level > 0 && !e.vac && !boomRef.current && time - lastSpawn.current > (a < 0.03 ? 40 : 65) && lift(a) < H * 1.4) {
       lastSpawn.current = time;
       const y = lift(a);
       if (y < 60) {
@@ -194,13 +278,14 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
         addPuffs([{ x: rnd(-8, 8), y, dx: rnd(-60, 60), dy: rnd(-30, 20), s: rnd(1.4, 2.8) * (1 + a), d: rnd(2.5, 4), c: rnd(190, 230), warm: y < 160 && Math.random() < 0.5 }]);
       }
     }
-    if (time - lastFlush.current > 90 && pending.current.length) {
-      lastFlush.current = time;
-      const add = pending.current; pending.current = [];
-      setPuffs((p) => [...p.filter((q) => time - q.born < q.d * 1000), ...add.map((q) => ({ ...q, born: time }))].slice(-130));
+    const cv = smokeRef.current;
+    if (cv && puffs.current.length) {   // son bulut silindiği karede canvas da temizlenmiş olur
+      const { w, h } = smokeSize.current;
+      drawPuffs(cv.getContext('2d'), puffs.current, performance.now(), w, h, groundH, worldY.get());
     }
-    // Telemetri (etiketli, sade)
-    if (tStart.current && tel.time.current) {
+    // Telemetri (etiketli, sade): saniyede ~10 kez yeterli
+    if (tStart.current && tel.time.current && time - lastTel.current > 100) {
+      lastTel.current = time;
       const t = (performance.now() - tStart.current) / 1000;
       tel.time.current.textContent = `${Math.floor(t)} s`;
       tel.alt.current.textContent = `${Math.round(a ** 1.5 * 165)} km`;
@@ -238,14 +323,14 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
         SFX.deluge();
         addPuffs(Array.from({ length: 14 }, () => { const side = Math.random() < 0.5 ? -1 : 1; return { x: side * rnd(20, 90), y: rnd(-6, 6), dx: side * rnd(60, 240), dy: rnd(0, 30), s: rnd(1.6, 3), d: rnd(2.5, 4), c: 245, warm: false }; }));
       }
-      if (n === 1) { SFX.sparks(); setSparkBursts((b) => [...b, Date.now()]); }
+      if (n === 1) { SFX.sparks(); burstSparks(); }
       await w(Math.max(0, 1000 - (performance.now() - t0)));
     }
     // Ateşleme: motor çalışır, roket kelepçede titrer, duman yayılır
     const t1 = performance.now();
     await speakNow('Ignition!');
     setCount(0);
-    setSparkBursts((b) => [...b, Date.now()]);
+    burstSparks();
     engineStart(); SFX.ignite();
     engine.current.level = 0.55; shake.current.target = 3.5;
     await w(Math.max(0, 1400 - (performance.now() - t1)));
@@ -261,6 +346,7 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
       await w(heavy ? 2300 : 1500);
       flight.stop();
       engine.current.level = 0; engineStop(0.05);
+      boomRef.current = true;
       setBoom({ y: lift(alt.get()) + nozzleTop * 0.5 });
       mark('Launch', false);
       SFX.boom(); shake.current.now = 24; shake.current.target = 0;
@@ -292,7 +378,7 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
   return (
     <motion.div className="absolute inset-0 overflow-hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.9 } }}>
-      <div ref={shakeRef} className="absolute -inset-6">
+      <div ref={shakeRef} className="absolute -inset-6" style={{ willChange: 'transform' }}>
         {/* Gökyüzü: önce alacakaranlık, yükseldikçe uzay */}
         <div className="starry absolute inset-0" />
         <motion.div className="absolute inset-0" style={{ opacity: starOpacity, background: 'radial-gradient(1px 1px at 12% 22%,#fff,transparent),radial-gradient(1px 1px at 62% 12%,#fff,transparent),radial-gradient(1.4px 1.4px at 82% 42%,#fff,transparent),radial-gradient(1px 1px at 32% 52%,#fff,transparent),radial-gradient(1px 1px at 46% 30%,#fff,transparent),radial-gradient(1.2px 1.2px at 8% 60%,#fff,transparent),radial-gradient(1px 1px at 92% 18%,#fff,transparent)' }} />
@@ -322,17 +408,12 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
             </div>
           ))}
 
-          {/* Duman ve buhar (alevin yanındakiler turuncu aydınlanır) */}
-          {puffs.map((p) => (
-            <motion.div key={p.id} className="absolute rounded-full"
-                        style={{ left: `calc(50% + ${p.x}px)`, bottom: groundH + p.y, width: 46, height: 46, marginLeft: -23,
-                                 background: p.warm
-                                   ? `radial-gradient(circle at 45% 65%, rgba(255,190,130,.95) 0%, rgb(${p.c},${p.c - 12},${p.c - 30}) 35%, rgba(${p.c - 50},${p.c - 50},${p.c - 40},.5) 60%, transparent 72%)`
-                                   : `radial-gradient(circle at 40% 40%, rgb(${p.c},${p.c},${p.c + 8}) 0%, rgba(${p.c - 40},${p.c - 40},${p.c - 30},.5) 55%, transparent 72%)` }}
-                        initial={{ scale: 0.4, opacity: 0, x: 0, y: 0 }}
-                        animate={{ scale: p.s, opacity: [0, 0.92, 0.55, 0], x: p.dx, y: -p.dy }}
-                        transition={{ duration: p.d, ease: 'easeOut' }} />
-          ))}
+        </motion.div>
+
+        {/* Duman ve buhar: tek canvas (alevin yanındakiler turuncu aydınlanır) */}
+        <canvas ref={smokeRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+        {/* Kıvılcımlar ve patlama dumanın üstünde kalsın diye ayrı katmanda (dünya ile birlikte kayar) */}
+        <motion.div className="pointer-events-none absolute inset-0" style={{ y: worldY }}>
           {sparkBursts.map((id) => <Sparks key={id} bottom={groundH + 10} />)}
           {boom && <Explosion bottom={groundH + boom.y} />}
         </motion.div>
@@ -355,7 +436,7 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
       <AnimatePresence>
         {count !== null && (
           <motion.div key={count} className="pointer-events-none absolute inset-x-0 top-[24%] z-20 text-center sm:top-[6%]"
-                      initial={{ opacity: 0, scale: 1.7, filter: 'blur(8px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                      initial={{ opacity: 0, scale: 1.7 }} animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.35, ease: 'easeOut' }}>
             {count > 0 ? (
               <>
@@ -377,7 +458,7 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
         {flying && (
           <motion.div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             {[['⏱️ TIME', tel.time], ['⬆️ HEIGHT', tel.alt], ['💨 SPEED', tel.speed]].map(([label, ref]) => (
-              <div key={label} className="min-w-[5.8rem] rounded-xl border border-white/10 bg-[#050914]/70 px-2.5 py-1.5 text-center backdrop-blur-md sm:min-w-[7.5rem] sm:px-3">
+              <div key={label} className="min-w-[5.8rem] rounded-xl border border-white/10 bg-[#050914]/85 px-2.5 py-1.5 text-center sm:min-w-[7.5rem] sm:px-3">
                 <div className="whitespace-nowrap text-[10px] font-bold tracking-widest text-muted sm:text-xs">{label}</div>
                 <div ref={ref} className="whitespace-nowrap font-display text-[13px] text-cyan sm:text-lg">0</div>
               </div>
@@ -387,7 +468,7 @@ function PadScene({ art, mode, rows: startRows, banner, target, onDone }) {
       </AnimatePresence>
     </motion.div>
   );
-}
+});
 
 // ---------------------------------------------------------------- Patlama (ateş topu, kor parçacıkları, duman, şok dalgası)
 function Explosion({ bottom }) {
@@ -437,7 +518,7 @@ const TGT = { x: 845, y: 190 };
 const TWINKLES = Array.from({ length: 16 }, (_, i) => ({ x: (i * 173) % 1000, y: (i * 97 + 40) % 540, d: 1.5 + (i % 5) * 0.5, r: 1 + (i % 3) * 0.5 }));
 const EVENT_TINT = { 'Solar Storm': '#ffcf5a', 'Micrometeoroid Strike': '#ffffff', 'Cosmic Ray Burst': '#c084fc' };
 
-function SpaceScene({ rows: initialRows, failName, target, craft, banner, onDone }) {
+const SpaceScene = memo(function SpaceScene({ rows: initialRows, failName, target, craft, banner, onDone }) {
   const p = useMotionValue(0);
   const orbitA = useMotionValue(0);
   const pathRef = useRef(null);
@@ -452,9 +533,11 @@ function SpaceScene({ rows: initialRows, failName, target, craft, banner, onDone
   const cw = 54, ch = cw * (craft.height / craft.width);
 
   const place = (x, y, deg, scale = 1) => craftRef.current?.setAttribute('transform', `translate(${x} ${y}) rotate(${deg}) scale(${scale})`);
+  const pathLen = useRef(0);   // yol uzunluğu değişmez: her karede yeniden hesaplanmasın
   useMotionValueEvent(p, 'change', (v) => {
     const path = pathRef.current; if (!path || orbiting) return;
-    const L = path.getTotalLength(), a = path.getPointAtLength(v * L), b = path.getPointAtLength(Math.min(L, v * L + 2));
+    const L = pathLen.current || (pathLen.current = path.getTotalLength());
+    const a = path.getPointAtLength(v * L), b = path.getPointAtLength(Math.min(L, v * L + 2));
     place(a.x, a.y, (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI, 0.7 + v * 0.3);
   });
   useMotionValueEvent(orbitA, 'change', (ang) => {
@@ -533,14 +616,15 @@ function SpaceScene({ rows: initialRows, failName, target, craft, banner, onDone
         </defs>
         <circle cx="-40" cy="-40" r="260" fill="url(#sun-glow)" />
         {TWINKLES.map((s, i) => (
-          <motion.circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#fff" animate={{ opacity: [0.15, 1, 0.15] }}
-                         transition={{ repeat: Infinity, duration: s.d, delay: i * 0.17 }} />
+          <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#fff" className="twinkle"
+                  style={{ '--d': `${s.d}s`, animationDelay: `${i * 0.17}s` }} />
         ))}
         <PlanetShape name="Earth" cx={EARTH.x} cy={EARTH.y} r={EARTH.r} id="earth-route" />
         <text x={EARTH.x} y={EARTH.y + EARTH.r + 30} textAnchor="middle" className="fill-[#9fdcff] text-[20px] font-extrabold">🏠 EARTH</text>
         <path d={ROUTE} fill="none" stroke="#4fd1ff" strokeOpacity=".22" strokeWidth="2" strokeDasharray="6 9" />
-        <motion.path ref={pathRef} d={ROUTE} fill="none" stroke="#4fd1ff" strokeWidth="3" strokeLinecap="round"
-                     style={{ pathLength: p, filter: 'drop-shadow(0 0 6px #4fd1ff)' }} />
+        {/* Parlama: drop-shadow filtresi yerine altta kalın, yarı saydam ikinci bir çizgi (her karede filtre hesabı yok) */}
+        <motion.path d={ROUTE} fill="none" stroke="#4fd1ff" strokeOpacity=".25" strokeWidth="10" strokeLinecap="round" style={{ pathLength: p }} />
+        <motion.path ref={pathRef} d={ROUTE} fill="none" stroke="#4fd1ff" strokeWidth="3" strokeLinecap="round" style={{ pathLength: p }} />
         {orbiting && (
           <motion.ellipse cx={TGT.x} cy={TGT.y} rx={tr * 1.55} ry={tr * 1.55 * 0.42} fill="none" stroke="#ffb347" strokeOpacity=".5"
                           strokeDasharray="4 6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
@@ -579,13 +663,13 @@ function SpaceScene({ rows: initialRows, failName, target, craft, banner, onDone
       <Steps rows={rows} />
     </motion.div>
   );
-}
+});
 
 // ---------------------------------------------------------------- 3) Sonuç kartı
 function EndCard({ ok, target, reason, onPlay, onReport, onWorkshop }) {
   const confetti = useMemo(() => Array.from({ length: 40 }, (_, i) => ({ x: rnd(-260, 260), y: rnd(180, 420), r: rnd(-540, 540), c: ['#4fd1ff', '#ffb347', '#22d3a6', '#fc3d21', '#ffe066'][i % 5], d: rnd(1.6, 2.8) })), []);
   return (
-    <motion.div className="absolute inset-0 z-40 grid place-items-center bg-black/55 p-4 backdrop-blur-sm"
+    <motion.div className="absolute inset-0 z-40 grid place-items-center bg-black/70 p-4"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       {ok && (
         <div className="pointer-events-none absolute left-1/2 top-1/3">
@@ -641,24 +725,30 @@ export default function LaunchSequence({ flight, gameData, selection, animateOn,
   const [scene, setScene] = useState(animateOn ? 'pad' : 'end');
   const [banner, setBannerState] = useState(null);
   const bannerTimer = useRef(null);
-  const showBanner = (text, sub, color) => {
+  // useCallback + useMemo: başlık kartı değişince (LIFTOFF!, MAX-Q ...) memo'lu sahneler yeniden çizilmez
+  const showBanner = useCallback((text, sub, color) => {
     setBannerState({ id: Date.now() + Math.random(), text, sub, color: color || '#4fd1ff' });
     clearTimeout(bannerTimer.current);
     bannerTimer.current = setTimeout(() => setBannerState(null), 2400);
-  };
+  }, []);
   useEffect(() => () => clearTimeout(bannerTimer.current), []);
 
-  const finish = (ok) => {
+  const finish = useCallback((ok) => {
     setBannerState(null);
     if (ok && success) SFX.win(); else SFX.over();
     setScene('end');
-  };
+  }, [success]);
   const skip = () => { engineStop(0.2); sayStop(); setBannerState(null); setScene('end'); };
 
-  const padRows = stages.filter((s) => s.phase === 'pre' || s.phase === 'launch');
-  // Rampada "Launch" adımı listede görünsün (simülasyon orada durduysa yine de)
-  if (!padRows.some((s) => s.name === 'Launch') && padMode !== 'scrub') padRows.push({ name: 'Launch', ok: true, phase: 'launch', state: null });
-  const spaceRows = stages.filter((s) => s.phase === 'cruise' || s.phase === 'orbit');
+  const padRows = useMemo(() => {
+    const rows = stages.filter((s) => s.phase === 'pre' || s.phase === 'launch');
+    // Rampada "Launch" adımı listede görünsün (simülasyon orada durduysa yine de)
+    if (!rows.some((s) => s.name === 'Launch') && padMode !== 'scrub') rows.push({ name: 'Launch', ok: true, phase: 'launch', state: null });
+    return rows;
+  }, [stages, padMode]);
+  const spaceRows = useMemo(() => stages.filter((s) => s.phase === 'cruise' || s.phase === 'orbit'), [stages]);
+  const padDone = useCallback((ok) => (ok && spaceRows.length ? setScene('space') : finish(ok && success)), [spaceRows, finish, success]);
+  const spaceDone = useCallback((ok) => finish(ok && success), [finish, success]);
 
   return (
     <motion.div className="fixed inset-0 z-50 overflow-hidden bg-black text-white" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -667,16 +757,16 @@ export default function LaunchSequence({ flight, gameData, selection, animateOn,
       <AnimatePresence>
         {scene === 'pad' && (
           <PadScene key="pad" art={flight.art.rocket} mode={padMode} rows={padRows} banner={showBanner} target={target}
-                    onDone={(ok) => (ok && spaceRows.length ? setScene('space') : finish(ok && success))} />
+                    onDone={padDone} />
         )}
         {scene === 'space' && (
           <SpaceScene key="space" rows={spaceRows} failName={success ? null : (fail?.name || 'Mission')} target={target}
-                      craft={flight.art.craft} banner={showBanner} onDone={(ok) => finish(ok && success)} />
+                      craft={flight.art.craft} banner={showBanner} onDone={spaceDone} />
         )}
       </AnimatePresence>
       <Banner banner={banner} />
       {scene !== 'end' && (
-        <button onClick={skip} className="absolute right-3 top-3 z-40 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-bold backdrop-blur hover:bg-white/20">
+        <button onClick={skip} className="absolute right-3 top-3 z-40 rounded-full border border-white/15 bg-[#0b1226]/85 px-4 py-2 text-sm font-bold hover:bg-[#16224a]">
           ⏭ Skip
         </button>
       )}

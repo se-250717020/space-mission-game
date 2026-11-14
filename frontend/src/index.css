@@ -64,8 +64,9 @@ button:disabled { cursor: not-allowed; }
 .scene-svg .rk-wrap { transform-origin: center bottom; }
 .scene-svg .part.pop-a, .scene-svg .part.pop-b, .scene-svg .target.pop-a, .scene-svg .target.pop-b { animation: popA 1s cubic-bezier(.2,.8,.3,1.2); }
 .scene-svg .rk-wrap.pop-a, .scene-svg .rk-wrap.pop-b { animation: craneA 1.1s cubic-bezier(.25,.8,.3,1); }
-@keyframes popA { 0% { transform: scale(.4); opacity: 0; } 45% { transform: scale(1.22); opacity: 1; filter: drop-shadow(0 0 6px #4fd1ff) brightness(1.5); } 100% { transform: scale(1); filter: none; } }
-@keyframes craneA { 0% { transform: translateY(60px) scaleY(.85); opacity: 0; } 55% { opacity: 1; filter: drop-shadow(0 0 10px #ffb070); } 80% { transform: translateY(-4px); } 100% { transform: none; filter: none; } }
+/* Performans: animasyonlar sadece transform + opacity kullanır (filter/drop-shadow her karede yeniden boyatıyordu) */
+@keyframes popA { 0% { transform: scale(.4); opacity: 0; } 45% { transform: scale(1.22); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes craneA { 0% { transform: translateY(60px) scaleY(.85); opacity: 0; } 55% { opacity: 1; } 80% { transform: translateY(-4px); } 100% { transform: none; } }
 .scene-svg .vapor { fill: #dfe8f5; opacity: 0; animation: vapor 3.4s ease-out infinite; }
 .scene-svg .v1 { animation-delay: 1.1s; } .scene-svg .v2 { animation-delay: .5s; animation-duration: 4.2s; } .scene-svg .v3 { animation-delay: 2s; animation-duration: 4.6s; }
 @keyframes vapor { 0% { opacity: 0; transform: scale(.4); } 20% { opacity: .55; } 100% { opacity: 0; transform: translate(8px,-14px) scale(2.2); } }
@@ -77,10 +78,20 @@ button:disabled { cursor: not-allowed; }
 .scene-svg .bubble.warn { fill: #ffd98a; }
 .scene-svg .stand-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; fill: #7fdcff; text-anchor: middle; }
 
-/* LAUNCH düğmesi nefes alır */
-@keyframes launchGlow { 0%,100% { box-shadow: 0 0 18px rgba(252,61,33,.45); } 50% { box-shadow: 0 0 42px rgba(255,138,61,.8); } }
-.launch-glow { animation: launchGlow 2.2s ease-in-out infinite; }
+/* LAUNCH düğmesi nefes alır. box-shadow'u anime etmek her karede yeniden boyatıyordu:
+   parlak gölge ayrı bir katmanda (::after) sabit durur, sadece opacity'si değişir (GPU). */
+.launch-glow { position: relative; box-shadow: 0 0 18px rgba(252,61,33,.45); }
+.launch-glow::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 42px rgba(255,138,61,.8); opacity: 0; will-change: opacity;
+  animation: launchGlow 2.2s ease-in-out infinite;
+}
+@keyframes launchGlow { 50% { opacity: 1; } }
+
+/* Uzay sahnesinde yıldız parıltısı (CSS: JS döngüsü gerektirmez) */
+.twinkle { animation: twinkle var(--d, 2s) ease-in-out infinite; }
+@keyframes twinkle { 0%, 100% { opacity: .15; } 50% { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .scene-svg *, .launch-glow { animation: none !important; }
+  .scene-svg *, .launch-glow::after, .twinkle { animation: none !important; }
 }

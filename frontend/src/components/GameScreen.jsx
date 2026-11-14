@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { postDesign, postLaunch } from '../api.js';
 import { audio, primeSpeech, SFX } from '../sound.js';
@@ -23,6 +23,16 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
   const latest = useRef(null);
   const queue = useRef(Promise.resolve());
   const toastTimer = useRef(null);
+  const launchingRef = useRef(false);
+
+  // Aynı bilgi tekrar gelirse (fare aynı kartın üstünde gezerken) state değişmez → yeniden çizim yok
+  const focusOn = useCallback((next) => {
+    setFocus((prev) => {
+      const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+      for (const k of keys) if (prev[k] !== next[k]) return next;
+      return prev;
+    });
+  }, []);
 
   useEffect(() => {
     postDesign({ mission: Object.keys(gameData.missions)[0], difficulty })
@@ -30,7 +40,7 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
       .catch((e) => setError(e.message));
   }, [gameData, difficulty]);
 
-  const showImpact = (impact) => {
+  const showImpact = useCallback((impact) => {
     if (!impact || !impact.headline) return;
     const nameToId = Object.fromEntries(Object.entries(gameData.check_names).map(([id, n]) => [n, id]));
     const words = impact.deltas.slice(0, 4).map((d) => {
@@ -44,23 +54,26 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
     setToast({ id: Date.now(), kind, text: words.join(' · ') || impact.headline, problems, fixed });
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), problems.length ? 4500 : 2800);
-  };
+  }, [gameData]);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  // Değişiklikler sırayla gönderilir (hızlı tıklamada biri diğerini ezmesin)
-  const change = (key, value, focusInfo) => {
+  // Değişiklikler sırayla gönderilir (hızlı tıklamada biri diğerini ezmesin).
+  // useCallback: fonksiyon her çizimde yeniden oluşmaz, React.memo'lu paneller boşuna çizilmez.
+  const change = useCallback((key, value, focusInfo) => {
     audio(); SFX.pick();
-    if (focusInfo) setFocus(focusInfo);
+    if (focusInfo) focusOn(focusInfo);
     queue.current = queue.current.then(async () => {
       const next = await postDesign({ selection: latest.current.selection, key, value });
       latest.current = next;
       setState(next);
       showImpact(next.impact);
     }).catch((e) => setError(e.message));
-  };
+  }, [focusOn, showImpact]);
 
-  const launch = async () => {
-    if (launching) return;
+  const launch = useCallback(async () => {
+    if (launchingRef.current) return;
     audio(); primeSpeech(); SFX.click();
+    launchingRef.current = true;
     setLaunching(true);
     try {
       await queue.current;
@@ -71,9 +84,10 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
     } catch (e) {
       setError(e.message);
     } finally {
+      launchingRef.current = false;
       setLaunching(false);
     }
-  };
+  }, [player]);
 
   if (!state) {
     return (
@@ -110,11 +124,12 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
         </div>
       )}
 
-      {/* 3 kolon: fırlatmada arkada kalır, hafifçe bulanıklaşır */}
-      <motion.main animate={{ scale: away ? 0.96 : 1, filter: away ? 'blur(6px)' : 'blur(0px)', opacity: away ? 0.4 : 1 }}
-                   transition={{ duration: 0.6, ease: 'easeInOut' }}
+      {/* 3 kolon: fırlatmada arkada kalır. Sadece transform + opacity (blur filtresi her karede
+          tüm ekranı yeniden boyuyordu; zaten fırlatma ekranı üstünü tamamen kapatıyor) */}
+      <motion.main animate={{ scale: away ? 0.96 : 1, opacity: away ? 0.4 : 1 }}
+                   transition={{ duration: 0.6, ease: 'easeInOut' }} style={{ willChange: away ? 'transform, opacity' : 'auto' }}
                    className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-3 lg:content-stretch lg:grid-cols-[minmax(300px,25rem)_minmax(0,1fr)_minmax(280px,23rem)] lg:overflow-hidden">
-        <Workshop gameData={gameData} state={state} change={change} setFocus={setFocus} />
+        <Workshop gameData={gameData} state={state} change={change} setFocus={focusOn} />
         <Dashboard gameData={gameData} state={state} onLaunch={launch} launching={launching} />
         <InfoPanel gameData={gameData} state={state} focus={focus} />
       </motion.main>
@@ -124,7 +139,7 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
         {toast && phase === 'design' && (
           <motion.div key={toast.id} initial={{ opacity: 0, y: 30, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 20 }} transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-                      className={`pointer-events-none fixed bottom-4 left-1/2 z-40 w-[min(92vw,30rem)] -translate-x-1/2 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur
+                      className={`pointer-events-none fixed bottom-4 left-1/2 z-40 w-[min(92vw,30rem)] -translate-x-1/2 rounded-2xl border px-4 py-3 shadow-2xl
                         ${toast.kind === 'bad' ? 'border-bad bg-[#2a0c14]/95' : toast.kind === 'good' ? 'border-ok bg-[#0a2620]/95' : 'border-line bg-panel2/95'}`}>
             <div className="font-bold">🛠️ {toast.text}</div>
             {toast.problems.length > 0 && <div className="text-sm text-[#ffb3ba]">🚨 Uh-oh: {toast.problems.join(', ')}!</div>}

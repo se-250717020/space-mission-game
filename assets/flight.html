@@ -38,8 +38,15 @@ const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // ================================================================ SES (Web Audio, dosyasız)
-let actx = null, master = null, muted = !CFG.sound;
+let actx = null, master = null, muted = !CFG.sound, trim = 1;
 const VOL = clamp(CFG.volume / 100, 0, 1);
+const dbToGain = (db) => Math.pow(10, db / 20);
+// SES SEVİYELERİ: her efekt çevrimdışı çalınıp algılanan yüksekliği ölçüldü (K-ağırlıklı, 200 ms, LUFS benzeri).
+// Eskiden en sessiz ile en yüksek arasında ~38 dB fark vardı; bu tablo hepsini aynı hedefe (-22 LUFS) getirir.
+// AYNI TABLO frontend/src/sound.js içinde de var.
+const TRIM_DB = { pip: 13.6, siren: 12.6, ignite: -12.1, sep: 2.3, boom: -16.2, whoosh: 5.8, burn: 14.3, chime: 15.3,
+                  glitch: 6.0, win: 4.1, collect: 9.7, sent: 19.0, energy: 8.3, hit: 3.2, full: 12.9, over: 5.2 };
+const ENGINE_TRIM = dbToGain(-13.8), SPEECH_LEVEL = 0.8;
 const muteBtn = document.getElementById('mute');
 const skipBtn = document.getElementById('skip');
 muteBtn.textContent = muted ? '🔇' : '🔊';
@@ -54,7 +61,11 @@ function audio() {
       actx = new AC();
       master = actx.createGain();
       master.gain.value = VOL;
-      master.connect(actx.destination);
+      // Sınırlayıcı: aynı anda çalan sesler toplanınca cızırtı olmasın
+      const limiter = actx.createDynamicsCompressor();
+      limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 20;
+      limiter.attack.value = 0.002; limiter.release.value = 0.15;
+      master.connect(limiter); limiter.connect(actx.destination);
     }
     if (actx.state === 'suspended') actx.resume();
     return actx;
@@ -68,7 +79,7 @@ function tone(f, d, type, v, f2, at) {
   o.frequency.setValueAtTime(f, t);
   if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(v || 0.2, t + 0.012);
+  g.gain.exponentialRampToValueAtTime((v || 0.2) * trim, t + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0001, t + d);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + d + 0.05);
 }
@@ -89,7 +100,7 @@ function noise(d, v, fFrom, fTo, at) {
   flt.frequency.setValueAtTime(fFrom, t); flt.frequency.exponentialRampToValueAtTime(fTo, t + d);
   const g = a.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(v, t + Math.min(0.06, d / 4));
+  g.gain.exponentialRampToValueAtTime(v * trim, t + Math.min(0.06, d / 4));
   g.gain.exponentialRampToValueAtTime(0.0001, t + d);
   src.connect(flt); flt.connect(g); g.connect(master); src.start(t); src.stop(t + d);
 }
@@ -98,7 +109,8 @@ let eng = null;
 function engineStart() {
   const a = audio(); if (!a || eng) return;
   const t = a.currentTime;
-  const out = a.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(1, t + 0.4); out.connect(master);
+  const level = a.createGain(); level.gain.value = ENGINE_TRIM; level.connect(master);
+  const out = a.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(1, t + 0.4); out.connect(level);
   const rumble = a.createBufferSource(); rumble.buffer = noiseBuffer(a, 3, true); rumble.loop = true;
   const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 0.8;
   const rg = a.createGain(); rg.gain.value = 1.1; rumble.connect(lp); lp.connect(rg); rg.connect(out);
@@ -128,12 +140,12 @@ function say(text) {                     // geri sayımı okuyan ses (tarayıcı
   try {
     const ss = window.parent.speechSynthesis, U = window.parent.SpeechSynthesisUtterance;
     if (!ss || !U) return;
-    const u = new U(text); u.lang = 'en-US'; u.rate = 1.05; u.pitch = 0.8; u.volume = VOL;
+    const u = new U(text); u.lang = 'en-US'; u.rate = 1.05; u.pitch = 0.8; u.volume = VOL * SPEECH_LEVEL;
     ss.cancel(); ss.speak(u);
   } catch (e) {}
 }
 function sayStop() { try { window.parent.speechSynthesis.cancel(); } catch (e) {} }
-const SFX = {
+const RAW_SFX = {
   pip:     () => { tone(1180, 0.1, 'sine', 0.12); noise(0.14, 0.04, 5000, 2500); },
   siren:   () => [0, 1, 2, 3, 4, 5].forEach((i) => tone(i % 2 ? 620 : 830, 0.24, 'square', 0.07, null, i * 0.26)),
   ignite:  () => { noise(2.0, 0.95, 1400, 70); tone(95, 1.4, 'sine', 0.7, 30); },
@@ -151,6 +163,9 @@ const SFX = {
   full:    () => tone(200, 0.16, 'square', 0.09),
   over:    () => [784, 659, 523, 392].forEach((f, i) => tone(f, 0.32, 'triangle', 0.18, null, i * 0.16)),
 };
+// Her efekt kendi TRIM_DB düzeltmesiyle çalar
+const SFX = {};
+for (const name in RAW_SFX) SFX[name] = () => { trim = dbToGain(TRIM_DB[name] || 0); try { RAW_SFX[name](); } finally { trim = 1; } };
 muteBtn.addEventListener('click', (e) => {
   e.stopPropagation(); muted = !muted; muteBtn.textContent = muted ? '🔇' : '🔊';
   if (master) master.gain.setTargetAtTime(muted ? 0 : VOL, actx.currentTime, 0.05);
@@ -159,14 +174,46 @@ muteBtn.addEventListener('click', (e) => {
 });
 
 // ================================================================ ÇİZİM YARDIMCILARI
+// PERFORMANS NOTLARI
+// - Diziler "yerinde" temizlenir (compact): her karede filter() ile yeni dizi oluşturup çöp üretmez.
+// - Ekrandan çıkan duman, asteroit, eşya ve parçacıklar diziden hemen silinir (bellek sızıntısı yok).
+// - Gradyanlı arka plan, gezegenler, asteroitler, emojiler ve parlayan başlıklar bir kez küçük
+//   canvas'lara (sprite) çizilir, her karede sadece kopyalanır (drawImage).
 const C = document.getElementById('c');
-const X = C.getContext('2d');
-let W = 640, H = 440;
-const DPR = Math.min(window.devicePixelRatio || 1, 2);
+let X = C.getContext('2d', { alpha: false });     // opak canvas (her karede tamamı boyanıyor); sprite çizerken geçici olarak değişir
+let W = 640, H = 440, DPR = 1;
+const PIXEL_BUDGET = 2400000;                     // çok büyük ekranda piksel sınırı (FPS için)
+const MAX_WORLD = 600, MAX_PARTS = 400;
+const spriteCache = new Map();
+let bgCache = null;
+function compact(arr, keep) {
+  let n = 0;
+  for (let i = 0; i < arr.length; i++) if (keep(arr[i])) arr[n++] = arr[i];
+  arr.length = n;
+}
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h));
+  return c;
+}
+// key ile önbelleğe alınmış küçük çizim; w,h CSS pikseli
+function sprite(key, w, h, draw) {
+  let c = spriteCache.get(key);
+  if (!c) {
+    if (spriteCache.size > 80) spriteCache.clear();
+    c = makeCanvas(w * DPR, h * DPR);
+    const g = c.getContext('2d'); g.scale(DPR, DPR); draw(g, w, h);
+    spriteCache.set(key, c);
+  }
+  return c;
+}
 function resize() {
   W = C.clientWidth || 640; H = C.clientHeight || 440;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  if (W * H * DPR * DPR > PIXEL_BUDGET) DPR = Math.max(1, Math.sqrt(PIXEL_BUDGET / (W * H)));
   C.width = Math.round(W * DPR); C.height = Math.round(H * DPR);
   X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  spriteCache.clear(); bgCache = null;
 }
 window.addEventListener('resize', resize); resize();
 
@@ -181,9 +228,28 @@ function txt(s, x, y, size, color, align, family, weight) {
   X.textAlign = align || 'center'; X.textBaseline = 'middle';
   X.fillStyle = color || '#e8ecf4'; X.fillText(s, x, y);
 }
+// Parlayan başlık (shadowBlur çok pahalı): bir kez sprite'a çizilir
 function title(s, x, y, size, color) {
-  X.save(); X.shadowColor = color || '#fc3d21'; X.shadowBlur = 24;
-  txt(s, x, y, size, '#ffffff', 'center', 'Orbitron, ' + FONT, 900); X.restore();
+  const fam = 'Orbitron, ' + FONT;
+  X.font = `900 ${size}px ${fam}`;
+  let fs = size;
+  const room = W - 24, width = X.measureText(s).width;
+  if (width > room) fs = Math.max(9, Math.floor(size * room / width));
+  X.font = `900 ${fs}px ${fam}`;
+  const w = Math.ceil(Math.min(width, room) + 64), h = Math.ceil(fs * 1.6 + 48);
+  const c = sprite(`t|${s}|${fs}|${color}`, w, h, (g) => {
+    g.font = `900 ${fs}px ${fam}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowColor = color || '#fc3d21'; g.shadowBlur = 24; g.fillStyle = '#ffffff'; g.fillText(s, w / 2, h / 2);
+  });
+  X.drawImage(c, x - w / 2, y - h / 2, w, h);
+}
+// Emoji (canvas'ta pahalı): bir kez sprite'a çizilir
+function emoji(s, x, y, size) {
+  const box = Math.ceil(size * 1.4);
+  const c = sprite(`e|${s}|${size}`, box, box, (g) => {
+    g.font = `${size}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, box / 2, box / 2);
+  });
+  X.drawImage(c, x - box / 2, y - box / 2, box, box);
 }
 const big = () => Math.max(24, Math.min(60, W / 10));
 function svgImage(spec) {
@@ -204,23 +270,30 @@ function roundRect(x, y, w, h, r) {
 function seeded(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const stars = Array.from({ length: 170 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2 }));
 function starfield(alpha, scroll) {
+  X.fillStyle = '#fff';
   for (const s of stars) {
     if (scroll) { s.x -= scroll * s.z * 0.00035; if (s.x < 0) { s.x += 1; s.y = Math.random(); } }
-    X.globalAlpha = alpha * (0.3 + s.z * 0.7); X.fillStyle = '#fff';
+    X.globalAlpha = alpha * (0.3 + s.z * 0.7);
     X.fillRect(s.x * W, s.y * H, s.z * 1.7, s.z * 1.7);
   }
   X.globalAlpha = 1;
 }
 function space(scroll) {
-  const g = X.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#070d22'); g.addColorStop(0.6, '#03060f'); g.addColorStop(1, '#010309');
-  X.fillStyle = g; X.fillRect(0, 0, W, H);
-  const n = X.createRadialGradient(W * 0.62, H * 0.7, 0, W * 0.62, H * 0.7, W * 0.5);
-  n.addColorStop(0, 'rgba(120,80,200,.10)'); n.addColorStop(1, 'rgba(120,80,200,0)');
-  X.fillStyle = n; X.fillRect(0, 0, W, H);
-  const sun = X.createRadialGradient(-W * 0.04, -H * 0.08, 0, -W * 0.04, -H * 0.08, W * 0.45);
-  sun.addColorStop(0, 'rgba(255,230,170,.32)'); sun.addColorStop(1, 'rgba(255,200,120,0)');
-  X.fillStyle = sun; X.fillRect(0, 0, W, H);
+  // 3 gradyanlı gökyüzü bir kez çizilir (boyut değişene kadar)
+  if (!bgCache) {
+    bgCache = makeCanvas(W * DPR, H * DPR);
+    const b = bgCache.getContext('2d'); b.scale(DPR, DPR);
+    const g = b.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#070d22'); g.addColorStop(0.6, '#03060f'); g.addColorStop(1, '#010309');
+    b.fillStyle = g; b.fillRect(0, 0, W, H);
+    const n = b.createRadialGradient(W * 0.62, H * 0.7, 0, W * 0.62, H * 0.7, W * 0.5);
+    n.addColorStop(0, 'rgba(120,80,200,.10)'); n.addColorStop(1, 'rgba(120,80,200,0)');
+    b.fillStyle = n; b.fillRect(0, 0, W, H);
+    const sun = b.createRadialGradient(-W * 0.04, -H * 0.08, 0, -W * 0.04, -H * 0.08, W * 0.45);
+    sun.addColorStop(0, 'rgba(255,230,170,.32)'); sun.addColorStop(1, 'rgba(255,200,120,0)');
+    b.fillStyle = sun; b.fillRect(0, 0, W, H);
+  }
+  X.drawImage(bgCache, 0, 0, W, H);
   starfield(1, scroll);
 }
 
@@ -254,7 +327,7 @@ function planetPath(x, y, r) {
   }
   X.closePath();
 }
-function drawPlanet(x, y, r) {
+function drawPlanetRaw(x, y, r) {
   X.save();
   if (PL.haze) {
     const h = X.createRadialGradient(x, y, r * 0.92, x, y, r * 1.28);
@@ -285,7 +358,7 @@ function drawPlanet(x, y, r) {
 const EARTH_LAND = [[-0.38, -0.18, 0.3, 0.2, 0.5, '#3f9a54'], [-0.12, 0.38, 0.16, 0.3, -0.3, '#4a9a4f'],
                     [0.32, -0.38, 0.26, 0.14, 0.2, '#3d8f4d'], [0.48, 0.18, 0.14, 0.22, 0.6, '#b9975a'],
                     [0.05, -0.05, 0.1, 0.08, 0, '#c9a45c']];
-function drawEarth(x, y, r) {
+function drawEarthRaw(x, y, r) {
   X.save();
   const h = X.createRadialGradient(x, y, r * 0.95, x, y, r * 1.25);
   h.addColorStop(0, 'rgba(100,180,255,.55)'); h.addColorStop(1, 'rgba(100,180,255,0)');
@@ -303,6 +376,22 @@ function drawEarth(x, y, r) {
   X.fillStyle = sh; X.fillRect(x - r, y - r, r * 2, r * 2);
   X.restore();
 }
+
+// Gezegen çizimi (3-4 gradyan + kırpma) bir kez sprite'a çizilir. Yarıçap o an değişiyorsa
+// (yörünge yakınlaşması) önbelleği doldurmamak için doğrudan çizilir.
+const lastRadius = {};
+function cachedBody(kind, raw, x, y, r) {
+  const moving = lastRadius[kind] !== undefined && Math.abs(lastRadius[kind] - r) > 0.01;
+  lastRadius[kind] = r;
+  if (moving) { raw(x, y, r); return; }
+  const B = Math.ceil(r * 1.45), c = sprite(`${kind}|${r.toFixed(2)}`, B * 2, B * 2, (g) => {
+    const prev = X; X = g;
+    try { raw(B, B, r); } finally { X = prev; }
+  });
+  X.drawImage(c, x - B, y - B, B * 2, B * 2);
+}
+const drawPlanet = (x, y, r) => cachedBody('planet', drawPlanetRaw, x, y, r);
+const drawEarth = (x, y, r) => cachedBody('earth', drawEarthRaw, x, y, r);
 
 // ---------------------------------------------------------------- Roket, alev, uzay aracı
 function rocketScale() { return (H * 0.56) / Math.max(250, R.height); }
@@ -358,7 +447,7 @@ function craftImg(x, y, size, ang, dark) {
 // ---------------------------------------------------------------- Parçacıklar
 // "world" parçacıkları rampa sahnesinde (yerden yükseklik), "parts" ekranda (yolculuk ve oyun).
 let world = [];
-function puff(o) { world.push(o); if (world.length > 900) world.splice(0, world.length - 900); }
+function puff(o) { world.push(o); if (world.length > MAX_WORLD) world.splice(0, world.length - MAX_WORLD); }   // en eskiler atılır
 function updateWorld(dt) {
   for (const p of world) {
     const damp = Math.exp(-(p.drag || 1.2) * dt);
@@ -368,7 +457,7 @@ function updateWorld(dt) {
     if (p.wy < 0 && p.type !== 'deb') { p.wy = 0; p.vy = Math.abs(p.vy) * 0.2; }
     if (p.wy < 0 && p.type === 'deb') p.life = 0;
   }
-  world = world.filter((p) => p.life > 0);
+  compact(world, (p) => p.life > 0 && !p.gone);   // ömrü biten ya da ekranın altında kalan silinir
 }
 let parts = [];
 function burst(x, y, n, colors, speed) {
@@ -377,10 +466,11 @@ function burst(x, y, n, colors, speed) {
     parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.9,
                  c: colors[i % colors.length], r: 2 + Math.random() * 3 });
   }
+  if (parts.length > MAX_PARTS) parts.splice(0, parts.length - MAX_PARTS);
 }
 function drawParts(dt) {
   for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98; p.vy *= 0.98; p.life -= dt; }
-  parts = parts.filter((p) => p.life > 0);
+  compact(parts, (p) => p.life > 0 && p.x > -10 && p.x < W + 10 && p.y > -10 && p.y < H + 10);   // ömrü biten / ekrandan çıkan silinir
   for (const p of parts) { X.globalAlpha = Math.min(1, p.life); X.fillStyle = p.c; X.beginPath(); X.arc(p.x, p.y, p.r, 0, TAU); X.fill(); }
   X.globalAlpha = 1;
 }
@@ -453,7 +543,7 @@ function drawBanners(dt) {
     X.globalAlpha = 1;
     y += 62;
   }
-  banners = banners.filter((b) => b.t < b.dur);
+  compact(banners, (b) => b.t < b.dur);
 }
 function showOutcome(head, color, lines) {
   if (outcome) return;
@@ -561,6 +651,7 @@ function drawPadScene(dt) {
   for (const p of world) {
     if (p.type !== 'smoke') continue;
     const sx = SX(p.wx), sy = SY(p.wy);
+    if (sy - p.r > H + 60 && mode === 'ascent') { p.gone = true; continue; }   // kamera yükseldi: bir daha görünmez
     if (sy < -p.r || sy > H + p.r) continue;
     const d = Math.hypot(sx - tipX, sy - tipY), lit = engineOn * clamp(1 - d / (H * 0.32), 0, 1);
     const life = clamp(p.life / p.max, 0, 1), a = p.a * Math.min(1, (p.max - p.life) / 0.25 + 0.2) * Math.pow(life, 0.6);
@@ -750,9 +841,11 @@ function drawCruise(dt) {
   X.setLineDash([4, 8]); X.strokeStyle = 'rgba(159,220,255,.35)'; X.lineWidth = 1.5; X.beginPath();
   for (let i = 0; i <= 60; i++) { const p = routePoint(g, i / 60); i ? X.lineTo(p.x, p.y) : X.moveTo(p.x, p.y); }
   X.stroke(); X.setLineDash([]);
-  X.save(); X.shadowColor = '#4fd1ff'; X.shadowBlur = 10; X.strokeStyle = 'rgba(79,209,255,.85)'; X.lineWidth = 2.5; X.beginPath();
+  // Parlama: shadowBlur yerine önce kalın yarı saydam, sonra ince parlak çizgi (aynı yol)
+  X.beginPath();
   for (let i = 0; i <= 60 * pr; i++) { const p = routePoint(g, i / 60); i ? X.lineTo(p.x, p.y) : X.moveTo(p.x, p.y); }
-  X.stroke(); X.restore();
+  X.lineCap = 'round'; X.strokeStyle = 'rgba(79,209,255,.22)'; X.lineWidth = 9; X.stroke();
+  X.strokeStyle = 'rgba(79,209,255,.85)'; X.lineWidth = 2.5; X.stroke(); X.lineCap = 'butt';
   // Aşamalar ve uzay olayları yol üzerinde sırayla
   cruiseStages.forEach((s, j) => {
     const idx = firstAfterLaunch + j;
@@ -776,10 +869,10 @@ function drawCruise(dt) {
     X.fillStyle = rg; X.fillRect(p.x - size, p.y - size * 0.1, size * 2, size * 1.2); X.restore();
   }
   for (const r of trail) {
-    if (r.ring === undefined) continue;
     r.ring += dt * 1.4;
     if (r.ring < 1) { X.strokeStyle = `rgba(79,209,255,${1 - r.ring})`; X.lineWidth = 3; X.beginPath(); X.arc(r.x, r.y, size * (0.5 + r.ring), 0, TAU); X.stroke(); }
   }
+  compact(trail, (r) => r.ring < 1);   // biten halkalar silinir (eskiden dizide kalıyordu)
   // Yolculukta hata: kıvılcım, takla, sinyal kaybı
   if (FAIL_PHASE === 'cruise' && !crash && raw > 0 && pr >= cruiseStop - 1e-6) {
     crash = { t: 0 }; shown = STAGES.indexOf(FAIL) + 1;
@@ -875,8 +968,21 @@ function floatText(s, x, y, c) { S.floats.push({ s, x, y, c, life: 1 }); }
 function spawnRock(ramp) {
   const r = 13 + Math.random() * 22, n = 9, pts = [];
   for (let i = 0; i < n; i++) pts.push(0.7 + Math.random() * 0.35);
-  S.rocks.push({ x: W + r, y: 60 + Math.random() * (H - 80), r, pts, rot: 0, vr: (Math.random() - 0.5) * 3,
+  S.rocks.push({ x: W + r, y: 60 + Math.random() * (H - 80), r, img: rockSprite(r, pts), rot: 0, vr: (Math.random() - 0.5) * 3,
                  vx: -(140 + Math.random() * 130) * Math.sqrt(ramp), vy: (Math.random() - 0.5) * 40 });
+}
+// Asteroit resmi doğduğu anda bir kez çizilir; her karede sadece döndürülüp kopyalanır
+function rockSprite(r, pts) {
+  const R = r * 1.1 + 2, c = makeCanvas(R * 2 * DPR, R * 2 * DPR), g = c.getContext('2d');
+  g.scale(DPR, DPR); g.translate(R, R); g.beginPath();
+  pts.forEach((k, i) => { const a = i / pts.length * TAU; const px = Math.cos(a) * r * k, py = Math.sin(a) * r * k; i ? g.lineTo(px, py) : g.moveTo(px, py); });
+  g.closePath();
+  const rg = g.createRadialGradient(-r * 0.3, -r * 0.3, 1, 0, 0, r);
+  rg.addColorStop(0, '#9a9fae'); rg.addColorStop(1, '#45484f');
+  g.fillStyle = rg; g.fill(); g.strokeStyle = '#a3a8b8'; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = 'rgba(40,42,48,.7)'; g.beginPath(); g.arc(r * 0.2, -r * 0.15, r * 0.22, 0, TAU); g.fill();
+  c.R = R;
+  return c;
 }
 function spawnItem(kind) {
   S.items.push({ kind, x: W + 20, y: 64 + Math.random() * (H - 96), vx: -(120 + Math.random() * 70), bob: Math.random() * 6 });
@@ -918,7 +1024,7 @@ function update(dt) {
       if (S.lives <= 0) return endGame('💥 Your spacecraft broke!');
     }
   }
-  S.rocks = S.rocks.filter((r) => r.x > -60 && !r.dead);
+  compact(S.rocks, (r) => !r.dead && r.x > -r.r - 20 && r.y > -r.r - 40 && r.y < H + r.r + 40);   // ekrandan çıkan / çarpan silinir
   for (const it of S.items) {
     it.x += it.vx * dt; it.bob += dt * 4;
     if (!it.got && Math.hypot(it.x - S.x, it.y - S.y) < 26) {
@@ -928,7 +1034,7 @@ function update(dt) {
       else { SFX.full(); floatText('MEMORY FULL!', it.x, it.y, '#ffb3ba'); }
     }
   }
-  S.items = S.items.filter((it) => it.x > -40 && !it.got);
+  compact(S.items, (it) => !it.got && it.x > -40);
   // Anten veriyi Dünya'ya yollar (G.downlink_rate paket / saniye)
   if (S.tank > 0) {
     S.acc += G.downlink_rate * dt;
@@ -962,27 +1068,23 @@ function ship(x, y, tilt, thrust, blink) {    // oyundaki uzay aracı: atölyede
 function drawGame(dt) {
   space(260);
   drawPlanet(W - 40, H - 30, Math.min(W, H) * 0.2);
-  txt('🌍', 28, H - 26, 30);
+  emoji('🌍', 28, H - 26, 30);
   if (S.beam > 0) {
     X.strokeStyle = `rgba(79,209,255,${S.beam * 3})`; X.lineWidth = 2; X.setLineDash([4, 6]);
     X.beginPath(); X.moveTo(S.x, S.y); X.lineTo(28, H - 26); X.stroke(); X.setLineDash([]);
   }
-  for (const it of S.items) txt(it.kind === 'energy' ? '⚡' : '💾', it.x, it.y + Math.sin(it.bob) * 4, 24);
+  for (const it of S.items) emoji(it.kind === 'energy' ? '⚡' : '💾', it.x, it.y + Math.sin(it.bob) * 4, 24);
   for (const r of S.rocks) {
-    X.save(); X.translate(r.x, r.y); X.rotate(r.rot); X.beginPath();
-    r.pts.forEach((k, i) => { const a = i / r.pts.length * TAU; const px = Math.cos(a) * r.r * k, py = Math.sin(a) * r.r * k; i ? X.lineTo(px, py) : X.moveTo(px, py); });
-    X.closePath();
-    const rg = X.createRadialGradient(-r.r * 0.3, -r.r * 0.3, 1, 0, 0, r.r);
-    rg.addColorStop(0, '#9a9fae'); rg.addColorStop(1, '#45484f');
-    X.fillStyle = rg; X.fill(); X.strokeStyle = '#a3a8b8'; X.lineWidth = 1.5; X.stroke();
-    X.fillStyle = 'rgba(40,42,48,.7)'; X.beginPath(); X.arc(r.r * 0.2, -r.r * 0.15, r.r * 0.22, 0, TAU); X.fill();
+    if (r.x - r.r > W) continue;   // henüz ekrana girmedi
+    X.save(); X.translate(r.x, r.y); X.rotate(r.rot);
+    X.drawImage(r.img, -r.img.R, -r.img.R, r.img.R * 2, r.img.R * 2);
     X.restore();
   }
   const tilt = Math.max(-0.5, Math.min(0.5, S.vy / 500));
   ship(S.x, S.y, tilt, S.thrust, S.inv > 0 && Math.floor(S.inv * 10) % 2 === 0);
   drawParts(dt);
   for (const f of S.floats) { f.y -= 30 * dt; f.life -= dt; X.globalAlpha = Math.max(0, f.life); txt(f.s, f.x, f.y, 15, f.c); }
-  X.globalAlpha = 1; S.floats = S.floats.filter((f) => f.life > 0);
+  X.globalAlpha = 1; compact(S.floats, (f) => f.life > 0);
   // Üst gösterge
   X.fillStyle = 'rgba(3,6,13,.82)'; X.fillRect(0, 0, W, 46);
   const small = W < 460, fs = small ? 13 : 15, bw = small ? 46 : 80;
@@ -1051,8 +1153,18 @@ skipBtn.addEventListener('click', (e) => {
 });
 
 // ================================================================ ANA DÖNGÜ
-let last = performance.now();
+let last = performance.now(), running = true, visible = true;
+// iframe ekranda görünmüyorsa (oyuncu rapora kaydırdıysa) bekleme ekranları ve oyun durur:
+// boşuna saniyede 60 kare çizilmez. Görününce kaldığı yerden devam eder.
+const IDLE_MODES = new Set(['ready', 'end', 'lost', 'play']);
+try {
+  new IntersectionObserver((entries) => {
+    visible = entries[entries.length - 1].isIntersecting;
+    if (visible && !running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
+  }).observe(C);
+} catch (e) { visible = true; }
 function frame(now) {
+  if (!visible && IDLE_MODES.has(mode)) { running = false; return; }
   // Animasyon gerçek zamanla ilerler (yavaş cihazda da aynı sürede biter);
   // oyun fiziği ise kare başına en fazla 0.05 sn ilerler (takılmada araç duvardan geçmesin).
   const raw = Math.max(0, (now - last) / 1000); last = now;

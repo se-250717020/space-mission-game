@@ -10,6 +10,24 @@ const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
                  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down' };
+const MAX_PARTS = 400;                 // patlama parçacığı üst sınırı
+const PIXEL_BUDGET = 2_400_000;        // çok büyük/4K ekranda canvas piksel sayısı sınırı (FPS için)
+
+// PERFORMANS NOTLARI
+// - Diziler "yerinde" temizlenir (compact): her karede filter() ile yeni dizi oluşturup çöp üretmez.
+// - Ekrandan çıkan asteroit, eşya, parçacık ve yazılar diziden hemen silinir (bellek sızıntısı yok).
+// - Gradyanlı arka plan, gezegen, asteroit ve emoji çizimleri bir kez küçük canvas'lara (sprite)
+//   çizilip önbellekte tutulur; her karede sadece drawImage yapılır.
+function compact(arr, keep) {
+  let n = 0;
+  for (let i = 0; i < arr.length; i++) if (keep(arr[i])) arr[n++] = arr[i];
+  arr.length = n;
+}
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h));
+  return c;
+}
 
 export default function MiniGame({ params: G, craft, target, player, onExit }) {
   const canvasRef = useRef(null);
@@ -17,8 +35,8 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
 
   useEffect(() => {
     const C = canvasRef.current;
-    const X = C.getContext('2d');
-    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const X = C.getContext('2d', { alpha: false });   // opak canvas: tarayıcı alttakiyle karıştırmaz (daha hızlı)
+    let DPR = 1;
     let W = 640, H = 440, raf = 0, last = performance.now();
     let mode = 'ready', mt = 0, shake = 0, S = null, parts = [];
     let best = 0;
@@ -29,10 +47,17 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
     const img = new Image(); img.src = svgUrl(craft.svg);
     const stars = Array.from({ length: 170 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2 }));
 
+    // Önbellekler (boyut değişince temizlenir)
+    let bgCache = null;
+    const planetCache = new Map();
+    const spriteCache = new Map();   // emoji ve parlayan başlık yazıları
     const resize = () => {
       W = C.clientWidth || 640; H = C.clientHeight || 440;
+      DPR = Math.min(window.devicePixelRatio || 1, 2);
+      if (W * H * DPR * DPR > PIXEL_BUDGET) DPR = Math.max(1, Math.sqrt(PIXEL_BUDGET / (W * H)));
       C.width = Math.round(W * DPR); C.height = Math.round(H * DPR);
       X.setTransform(DPR, 0, 0, DPR, 0, 0);
+      bgCache = null; planetCache.clear(); spriteCache.clear();
     };
     resize();
     const ro = new ResizeObserver(resize); ro.observe(C);
@@ -42,39 +67,90 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       X.font = `800 ${size}px Nunito, system-ui, sans-serif`; X.fillStyle = color || '#fff';
       X.textAlign = align || 'center'; X.textBaseline = 'middle'; X.fillText(s, x, y);
     };
+    // Sabit yazı/emoji: bir kez küçük canvas'a çizilir, sonra sadece kopyalanır
+    // (emoji ve shadowBlur'lu yazı canvas'ta en pahalı çizimlerdendir)
+    const sprite = (key, w, h, draw) => {
+      let c = spriteCache.get(key);
+      if (!c) {
+        if (spriteCache.size > 64) spriteCache.clear();
+        c = makeCanvas(w * DPR, h * DPR);
+        const x = c.getContext('2d'); x.scale(DPR, DPR); draw(x, w, h);
+        c.w = w; c.h = h; spriteCache.set(key, c);
+      }
+      return c;
+    };
+    const emoji = (s, x, y, size) => {
+      const box = Math.ceil(size * 1.4);
+      const c = sprite(`e${s}${size}`, box, box, (g) => {
+        g.font = `${size}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, box / 2, box / 2);
+      });
+      X.drawImage(c, x - box / 2, y - box / 2, box, box);
+    };
     const title = (s, x, y, size, color) => {
-      X.font = `900 ${size}px Orbitron, system-ui, sans-serif`; X.fillStyle = color || '#fff';
-      X.textAlign = 'center'; X.textBaseline = 'middle'; X.shadowColor = color || '#4fd1ff'; X.shadowBlur = 16;
-      X.fillText(s, x, y); X.shadowBlur = 0;
+      const font = `900 ${size}px Orbitron, system-ui, sans-serif`;
+      X.font = font;
+      const w = Math.ceil(X.measureText(s).width + 48), h = Math.ceil(size * 1.6 + 32);
+      const c = sprite(`t${s}${size}${color}`, w, h, (g) => {
+        g.font = font; g.fillStyle = color || '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.shadowColor = color || '#4fd1ff'; g.shadowBlur = 16; g.fillText(s, w / 2, h / 2);
+      });
+      X.drawImage(c, x - w / 2, y - h / 2, w, h);
     };
     const space = (scroll) => {
-      const g = X.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, '#070d22'); g.addColorStop(0.6, '#03060f'); g.addColorStop(1, '#010309');
-      X.fillStyle = g; X.fillRect(0, 0, W, H);
-      const n = X.createRadialGradient(W * 0.62, H * 0.7, 0, W * 0.62, H * 0.7, W * 0.5);
-      n.addColorStop(0, 'rgba(120,80,200,.10)'); n.addColorStop(1, 'rgba(120,80,200,0)');
-      X.fillStyle = n; X.fillRect(0, 0, W, H);
+      // Gradyanlı gökyüzü bir kez çizilir (boyut değişene kadar)
+      if (!bgCache) {
+        bgCache = makeCanvas(W * DPR, H * DPR);
+        const b = bgCache.getContext('2d'); b.scale(DPR, DPR);
+        const g = b.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, '#070d22'); g.addColorStop(0.6, '#03060f'); g.addColorStop(1, '#010309');
+        b.fillStyle = g; b.fillRect(0, 0, W, H);
+        const n = b.createRadialGradient(W * 0.62, H * 0.7, 0, W * 0.62, H * 0.7, W * 0.5);
+        n.addColorStop(0, 'rgba(120,80,200,.10)'); n.addColorStop(1, 'rgba(120,80,200,0)');
+        b.fillStyle = n; b.fillRect(0, 0, W, H);
+      }
+      X.drawImage(bgCache, 0, 0, W, H);
+      X.fillStyle = '#fff';
       for (const s of stars) {
         if (scroll) { s.x -= scroll * s.z * 0.00035; if (s.x < 0) { s.x += 1; s.y = Math.random(); } }
-        X.globalAlpha = 0.3 + s.z * 0.7; X.fillStyle = '#fff'; X.fillRect(s.x * W, s.y * H, s.z * 1.7, s.z * 1.7);
+        X.globalAlpha = 0.3 + s.z * 0.7; X.fillRect(s.x * W, s.y * H, s.z * 1.7, s.z * 1.7);
       }
       X.globalAlpha = 1;
     };
     const planet = (x, y, r) => {
-      X.save();
-      if (PL.glow) {
-        const h = X.createRadialGradient(x, y, r * 0.92, x, y, r * 1.28);
-        h.addColorStop(0, PL.glow); h.addColorStop(1, 'rgba(0,0,0,0)');
-        X.fillStyle = h; X.beginPath(); X.arc(x, y, r * 1.28, 0, TAU); X.fill();
+      const key = Math.round(r), R = key * 1.3, size = R * 2;
+      let c = planetCache.get(key);
+      if (!c) {
+        c = makeCanvas(size * DPR, size * DPR);
+        const p = c.getContext('2d'); p.scale(DPR, DPR);
+        const cx = R, cy = R;
+        if (PL.glow) {
+          const h = p.createRadialGradient(cx, cy, key * 0.92, cx, cy, key * 1.28);
+          h.addColorStop(0, PL.glow); h.addColorStop(1, 'rgba(0,0,0,0)');
+          p.fillStyle = h; p.beginPath(); p.arc(cx, cy, key * 1.28, 0, TAU); p.fill();
+        }
+        p.beginPath(); p.arc(cx, cy, key, 0, TAU); p.clip();
+        const g = p.createRadialGradient(cx - key * 0.4, cy - key * 0.45, key * 0.05, cx, cy, key * 1.15);
+        g.addColorStop(0, PL.c[0]); g.addColorStop(0.55, PL.c[1]); g.addColorStop(1, PL.c[2]);
+        p.fillStyle = g; p.fillRect(cx - key, cy - key, key * 2, key * 2);
+        const sh = p.createLinearGradient(cx - key * 0.3, cy - key * 0.3, cx + key, cy + key);
+        sh.addColorStop(0, 'rgba(0,0,8,0)'); sh.addColorStop(1, 'rgba(0,0,8,.82)');
+        p.fillStyle = sh; p.fillRect(cx - key, cy - key, key * 2, key * 2);
+        planetCache.set(key, c);
       }
-      X.beginPath(); X.arc(x, y, r, 0, TAU); X.clip();
-      const g = X.createRadialGradient(x - r * 0.4, y - r * 0.45, r * 0.05, x, y, r * 1.15);
-      g.addColorStop(0, PL.c[0]); g.addColorStop(0.55, PL.c[1]); g.addColorStop(1, PL.c[2]);
-      X.fillStyle = g; X.fillRect(x - r, y - r, r * 2, r * 2);
-      const sh = X.createLinearGradient(x - r * 0.3, y - r * 0.3, x + r, y + r);
-      sh.addColorStop(0, 'rgba(0,0,8,0)'); sh.addColorStop(1, 'rgba(0,0,8,.82)');
-      X.fillStyle = sh; X.fillRect(x - r, y - r, r * 2, r * 2);
-      X.restore();
+      X.drawImage(c, x - R, y - R, size, size);
+    };
+    // Asteroit resmi doğduğu anda bir kez çizilir; her karede sadece döndürülüp kopyalanır
+    const rockSprite = (r, pts) => {
+      const R = r * 1.1 + 2, c = makeCanvas(R * 2 * DPR, R * 2 * DPR), g = c.getContext('2d');
+      g.scale(DPR, DPR); g.translate(R, R); g.beginPath();
+      pts.forEach((k, i) => { const a = (i / pts.length) * TAU; const px = Math.cos(a) * r * k, py = Math.sin(a) * r * k; if (i) g.lineTo(px, py); else g.moveTo(px, py); });
+      g.closePath();
+      const rg = g.createRadialGradient(-r * 0.3, -r * 0.3, 1, 0, 0, r);
+      rg.addColorStop(0, '#9a9fae'); rg.addColorStop(1, '#45484f');
+      g.fillStyle = rg; g.fill(); g.strokeStyle = '#a3a8b8'; g.lineWidth = 1.5; g.stroke();
+      g.fillStyle = 'rgba(40,42,48,.7)'; g.beginPath(); g.arc(r * 0.2, -r * 0.15, r * 0.22, 0, TAU); g.fill();
+      c.R = R;
+      return c;
     };
     const craftImg = (x, y, size, ang) => {
       const s = size / Math.max(craft.width, craft.height);
@@ -88,10 +164,12 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
         const a = Math.random() * TAU, v = (0.3 + Math.random()) * (speed || 220);
         parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.9, c: colors[i % colors.length], r: 2 + Math.random() * 3 });
       }
+      if (parts.length > MAX_PARTS) parts.splice(0, parts.length - MAX_PARTS);
     };
+    const onScreen = (x, y, m) => x > -m && x < W + m && y > -m && y < H + m;
     const drawParts = (dt) => {
       for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98; p.vy *= 0.98; p.life -= dt; }
-      parts = parts.filter((p) => p.life > 0);
+      compact(parts, (p) => p.life > 0 && onScreen(p.x, p.y, 10));   // ömrü biten / ekrandan çıkan silinir
       for (const p of parts) { X.globalAlpha = Math.min(1, p.life); X.fillStyle = p.c; X.beginPath(); X.arc(p.x, p.y, p.r, 0, TAU); X.fill(); }
       X.globalAlpha = 1;
     };
@@ -111,7 +189,7 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
     const floatText = (s, x, y, c) => S.floats.push({ s, x, y, c, life: 1 });
     const spawnRock = (ramp) => {
       const r = 13 + Math.random() * 22, pts = Array.from({ length: 9 }, () => 0.7 + Math.random() * 0.35);
-      S.rocks.push({ x: W + r, y: 60 + Math.random() * (H - 80), r, pts, rot: 0, vr: (Math.random() - 0.5) * 3,
+      S.rocks.push({ x: W + r, y: 60 + Math.random() * (H - 80), r, img: rockSprite(r, pts), rot: 0, vr: (Math.random() - 0.5) * 3,
                      vx: -(140 + Math.random() * 130) * Math.sqrt(ramp), vy: (Math.random() - 0.5) * 40 });
     };
     const spawnItem = (kind) => S.items.push({ kind, x: W + 20, y: 64 + Math.random() * (H - 96), vx: -(120 + Math.random() * 70), bob: Math.random() * 6 });
@@ -153,7 +231,8 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
           if (S.lives <= 0) { endGame('💥 Your spacecraft broke!'); return; }
         }
       }
-      S.rocks = S.rocks.filter((r) => r.x > -60 && !r.dead);
+      // Ekrandan çıkan (sola, yukarı ya da aşağı) veya çarpan asteroitler diziden silinir
+      compact(S.rocks, (r) => !r.dead && r.x > -r.r - 20 && r.y > -r.r - 40 && r.y < H + r.r + 40);
       for (const it of S.items) {
         it.x += it.vx * dt; it.bob += dt * 4;
         if (!it.got && Math.hypot(it.x - S.x, it.y - S.y) < 26) {
@@ -163,7 +242,7 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
           else { SFX.full(); floatText('MEMORY FULL!', it.x, it.y, '#ffb3ba'); }
         }
       }
-      S.items = S.items.filter((it) => it.x > -40 && !it.got);
+      compact(S.items, (it) => !it.got && it.x > -40);
       // Anten veriyi Dünya'ya yollar (G.downlink_rate paket / saniye)
       if (S.tank > 0) {
         S.acc += G.downlink_rate * dt;
@@ -181,20 +260,16 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
     const drawGame = (dt) => {
       space(260);
       planet(W - 40, H - 30, Math.min(W, H) * 0.2);
-      txt('🌍', 28, H - 26, 30);
+      emoji('🌍', 28, H - 26, 30);
       if (S.beam > 0) {
         X.strokeStyle = `rgba(79,209,255,${S.beam * 3})`; X.lineWidth = 2; X.setLineDash([4, 6]);
         X.beginPath(); X.moveTo(S.x, S.y); X.lineTo(28, H - 26); X.stroke(); X.setLineDash([]);
       }
-      for (const it of S.items) txt(it.kind === 'energy' ? '⚡' : '💾', it.x, it.y + Math.sin(it.bob) * 4, 24);
+      for (const it of S.items) emoji(it.kind === 'energy' ? '⚡' : '💾', it.x, it.y + Math.sin(it.bob) * 4, 24);
       for (const r of S.rocks) {
-        X.save(); X.translate(r.x, r.y); X.rotate(r.rot); X.beginPath();
-        r.pts.forEach((k, i) => { const a = (i / r.pts.length) * TAU; const px = Math.cos(a) * r.r * k, py = Math.sin(a) * r.r * k; if (i) X.lineTo(px, py); else X.moveTo(px, py); });
-        X.closePath();
-        const rg = X.createRadialGradient(-r.r * 0.3, -r.r * 0.3, 1, 0, 0, r.r);
-        rg.addColorStop(0, '#9a9fae'); rg.addColorStop(1, '#45484f');
-        X.fillStyle = rg; X.fill(); X.strokeStyle = '#a3a8b8'; X.lineWidth = 1.5; X.stroke();
-        X.fillStyle = 'rgba(40,42,48,.7)'; X.beginPath(); X.arc(r.r * 0.2, -r.r * 0.15, r.r * 0.22, 0, TAU); X.fill();
+        if (r.x - r.r > W) continue;   // henüz ekrana girmedi
+        X.save(); X.translate(r.x, r.y); X.rotate(r.rot);
+        X.drawImage(r.img, -r.img.R, -r.img.R, r.img.R * 2, r.img.R * 2);
         X.restore();
       }
       const tilt = clamp(S.vy / 500, -0.5, 0.5);
@@ -212,7 +287,7 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
       }
       drawParts(dt);
       for (const f of S.floats) { f.y -= 30 * dt; f.life -= dt; X.globalAlpha = Math.max(0, f.life); txt(f.s, f.x, f.y, 15, f.c); }
-      X.globalAlpha = 1; S.floats = S.floats.filter((f) => f.life > 0);
+      X.globalAlpha = 1; compact(S.floats, (f) => f.life > 0);
       // Üst gösterge
       X.fillStyle = 'rgba(3,6,13,.82)'; X.fillRect(0, 0, W, 46);
       const small = W < 460, fs = small ? 13 : 15, bw = small ? 46 : 80;
@@ -304,7 +379,7 @@ export default function MiniGame({ params: G, craft, target, player, onExit }) {
                 exit={{ opacity: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }}>
       <canvas ref={canvasRef} tabIndex={0} className="block h-full w-full cursor-crosshair touch-none outline-none" />
       <button onClick={() => onExit(scoreRef.current)}
-              className="absolute bottom-3 right-3 rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white backdrop-blur hover:bg-white/20">
+              className="absolute bottom-3 right-3 rounded-full border border-white/15 bg-[#0b1226]/85 px-4 py-2 text-sm font-bold text-white hover:bg-[#16224a]">
         📋 Mission report ➜
       </button>
     </motion.div>

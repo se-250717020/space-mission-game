@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   CATEGORY_ICONS, CATEGORY_KID, CATEGORY_TITLES, CHECK_WORDS, GAME_FEEL_WORDS, INSTRUMENT_ICONS, RATING_WORDS, typeLabel,
@@ -12,7 +13,8 @@ const Box = ({ title, children }) => (
 );
 
 // Sağ kolon: hedef gezegen bilgisi, gerekenler, seçili kategoriye göre bilgi, sistem kontrolleri
-export default function InfoPanel({ gameData, state, focus }) {
+// React.memo: sadece state ya da focus değişince yeniden çizilir (bildirim, ses düğmesi vb. etkilemez)
+function InfoPanel({ gameData, state, focus }) {
   const design = state.selection;
   const mission = gameData.missions[design.mission];
   const req = state.requirements;
@@ -97,13 +99,13 @@ export default function InfoPanel({ gameData, state, focus }) {
           {active.map((c) => {
             const [emoji, good, bad, fix] = CHECK_WORDS[c.id] || ['•', c.name, c.name, ''];
             return (
-              <motion.li key={c.id} layout className="flex gap-2">
+              <li key={c.id} className="flex gap-2">
                 <motion.span key={String(c.passed)} initial={{ scale: 0 }} animate={{ scale: 1 }}>{c.passed ? '✅' : '❌'}</motion.span>
                 <span>
                   <span className={c.passed ? '' : 'font-bold text-[#ffb3ba]'}>{emoji} {c.passed ? good : bad}</span>
                   {!c.passed && <span className="block text-xs text-muted">{fix}</span>}
                 </span>
-              </motion.li>
+              </li>
             );
           })}
         </ul>
@@ -120,3 +122,5 @@ export default function InfoPanel({ gameData, state, focus }) {
     </section>
   );
 }
+
+export default memo(InfoPanel);

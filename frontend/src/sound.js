@@ -4,8 +4,23 @@ let master = null;
 let muted = false;
 let volume = 0.7;
 let eng = null;
+let trim = 1;   // o an çalan efektin seviye düzeltmesi (TRIM_DB)
 
 const rand = (a, b) => a + Math.random() * (b - a);
+const dbToGain = (db) => Math.pow(10, db / 20);
+
+// SES SEVİYELERİ: her efekt tarayıcıda çevrimdışı çalınıp algılanan yüksekliği ölçüldü
+// (K-ağırlıklı, 200 ms pencere, LUFS benzeri). Eskiden en sessiz (click) ile en yüksek (boom)
+// arasında ~38 dB fark vardı. Bu tablo her efekti aynı hedefe (-22 LUFS) getirir.
+// Yeni bir efekt eklerken ya da sayıları değiştirirken burayı da güncelleyin.
+// AYNI TABLO assets/flight.html içinde de var (Streamlit sürümü).
+const TRIM_DB = {
+  click: 22.3, pick: 18.6, pip: 13.6, siren: 12.6, ignite: -12.1, deluge: 1.6, sparks: 8.0, flash: -4.8,
+  sep: 2.3, boom: -16.2, whoosh: 5.8, burn: 14.3, chime: 15.3, glitch: 6.0, win: 4.1, collect: 9.7,
+  sent: 19.0, energy: 8.3, hit: 3.2, full: 12.9, over: 5.2,
+};
+const ENGINE_TRIM = dbToGain(-13.8);   // motor gürlemesi de aynı seviyeye
+const SPEECH_LEVEL = 0.8;              // konuşma sesi tarayıcıdan gelir (ölçülemez): efektlere yakın olsun diye biraz kısık
 
 export function setSound({ sound, volume: v }) {
   muted = !sound;
@@ -23,7 +38,11 @@ export function audio() {
       actx = new AC();
       master = actx.createGain();
       master.gain.value = volume;
-      master.connect(actx.destination);
+      // Sınırlayıcı: aynı anda çalan sesler (ateşleme + motor + buhar) toplanınca cızırtı olmasın
+      const limiter = actx.createDynamicsCompressor();
+      limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 20;
+      limiter.attack.value = 0.002; limiter.release.value = 0.15;
+      master.connect(limiter); limiter.connect(actx.destination);
     }
     if (actx.state === 'suspended') actx.resume();
     return actx;
@@ -40,7 +59,7 @@ function tone(f, d, type, v, f2, at) {
   o.frequency.setValueAtTime(f, t);
   if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(v || 0.2, t + 0.012);
+  g.gain.exponentialRampToValueAtTime((v || 0.2) * trim, t + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0001, t + d);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + d + 0.05);
 }
@@ -63,7 +82,7 @@ function noise(d, v, fFrom, fTo, at) {
   flt.frequency.setValueAtTime(fFrom, t); flt.frequency.exponentialRampToValueAtTime(fTo, t + d);
   const g = a.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(v, t + Math.min(0.06, d / 4));
+  g.gain.exponentialRampToValueAtTime(v * trim, t + Math.min(0.06, d / 4));
   g.gain.exponentialRampToValueAtTime(0.0001, t + d);
   src.connect(flt); flt.connect(g); g.connect(master); src.start(t); src.stop(t + d);
 }
@@ -72,7 +91,8 @@ function noise(d, v, fFrom, fTo, at) {
 export function engineStart() {
   const a = audio(); if (!a || eng) return;
   const t = a.currentTime;
-  const out = a.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(1, t + 0.4); out.connect(master);
+  const level = a.createGain(); level.gain.value = ENGINE_TRIM; level.connect(master);
+  const out = a.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(1, t + 0.4); out.connect(level);
   const rumble = a.createBufferSource(); rumble.buffer = noiseBuffer(a, 3, true); rumble.loop = true;
   const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 0.8;
   const rg = a.createGain(); rg.gain.value = 1.1; rumble.connect(lp); lp.connect(rg); rg.connect(out);
@@ -147,7 +167,7 @@ export function say(text, { interrupt = false, rate = 0.95, maxWait = 600 } = {}
     try {
       const u = new SpeechSynthesisUtterance(text);
       if (voice) u.voice = voice;
-      u.lang = voice?.lang || 'en-US'; u.rate = rate; u.pitch = 0.9; u.volume = Math.max(0.4, volume);
+      u.lang = voice?.lang || 'en-US'; u.rate = rate; u.pitch = 0.9; u.volume = volume * SPEECH_LEVEL;
       u.onstart = finish; u.onerror = finish;
       if (interrupt) window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
@@ -157,8 +177,8 @@ export function say(text, { interrupt = false, rate = 0.95, maxWait = 600 } = {}
 }
 export function sayStop() { try { window.speechSynthesis?.cancel(); } catch { /* yok */ } }
 
-export const SFX = {
-  click:   () => tone(660, 0.06, 'sine', 0.06),
+const RAW_SFX = {
+  click:  () => tone(660, 0.06, 'sine', 0.06),
   pick:    () => { tone(880, 0.06, 'triangle', 0.08); tone(1320, 0.08, 'triangle', 0.06, null, 0.05); },
   pip:     () => { tone(1180, 0.1, 'sine', 0.12); noise(0.14, 0.04, 5000, 2500); },
   siren:   () => [0, 1, 2, 3, 4, 5].forEach((i) => tone(i % 2 ? 620 : 830, 0.24, 'square', 0.07, null, i * 0.26)),
@@ -180,3 +200,9 @@ export const SFX = {
   full:    () => tone(200, 0.16, 'square', 0.09),
   over:    () => [784, 659, 523, 392].forEach((f, i) => tone(f, 0.32, 'triangle', 0.18, null, i * 0.16)),
 };
+
+// Her efekt kendi TRIM_DB düzeltmesiyle çalar (tone/noise seslerini hemen planladığı için trim güvenle geri alınır)
+export const SFX = Object.fromEntries(Object.entries(RAW_SFX).map(([name, play]) => [name, () => {
+  trim = dbToGain(TRIM_DB[name] ?? 0);
+  try { play(); } finally { trim = 1; }
+}]));
