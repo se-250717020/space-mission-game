@@ -115,8 +115,32 @@ export function kidReason(stage) {
   if (stage.name === 'Launch') {
     return /heavy/i.test(stage.message || '') ? 'Too heavy! 🏋️ The rocket could not lift it.' : 'Rocket failure! 🎲 Bad luck this time.';
   }
-  if (stage.name.startsWith('Space Event')) return `${stage.name.slice(13)} ☄️ broke the spacecraft.`;
+  if (stage.name.startsWith('Space Event')) return `A ${eventName(stage.name).toLowerCase()} ☄️ broke the spacecraft.`;
   return String(stage.message || stage.name).slice(0, 90);
+}
+
+// Fırlatma sırasında sol üstteki adımların çocuk dostu adları (simulate_launch aşama adları)
+const STEP_LABELS = {
+  'Budget Approval': '💰 Money approved',
+  'Build and Test': '🔧 Built and tested',
+  Launch: '🚀 Launch',
+  'Interplanetary Cruise': '🌌 Fly through space',
+  'Arrival and Power-Up': '⚡ Wake up and power on',
+  'First Eclipse': '🌑 Survive the dark',
+  'Signal to Earth': '📡 Call Earth',
+  'Pointing and Calibration': '🎯 Aim the instruments',
+  'Science Operations': '🔬 Do the science',
+  'Mapping the Target': '🗺️ Map the surface',
+  'Data Downlink': '💾 Send data home',
+  'Extended Operations': '⏳ Keep working for years',
+  'Mission Complete': '🏁 Mission complete',
+};
+export const EVENT_ICONS = { 'Solar Storm': '☀️', 'Micrometeoroid Strike': '☄️', 'Cosmic Ray Burst': '⚡' };
+export const eventName = (stageName) => stageName.replace(/^Space Event:\s*/, '');
+export function stepLabel(name) {
+  if (STEP_LABELS[name]) return STEP_LABELS[name];
+  if (name.startsWith('Space Event')) { const e = eventName(name); return `${EVENT_ICONS[e] || '☄️'} ${e}`; }
+  return name;
 }
 
 export const NASA_RESOURCES = [

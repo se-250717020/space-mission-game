@@ -101,13 +101,36 @@ export function engineStop(fade = 0.5) {
   n.srcs.forEach((s) => { try { s.stop(t + fade + 0.3); } catch { /* zaten durdu */ } });
 }
 
-// Geri sayımı okuyan ses (tarayıcıda varsa)
-export function say(text) {
+// Geri sayımı okuyan ses (tarayıcıda varsa). Net bir İngilizce ses seçilir; cümleler
+// birbirini KESMEZ, sıraya girer (önceden "five" yarıda kalıyordu).
+let voice = null;
+function pickVoice() {
+  try {
+    const all = window.speechSynthesis.getVoices();
+    const en = all.filter((v) => /^en[-_]/i.test(v.lang));
+    const prefer = ['Google US English', 'Microsoft Aria', 'Microsoft Guy', 'Microsoft Jenny', 'Samantha', 'Alex', 'Microsoft David', 'Microsoft Zira'];
+    voice = prefer.map((p) => en.find((v) => v.name.includes(p))).find(Boolean)
+      || en.find((v) => /en-US/i.test(v.lang)) || en[0] || null;
+  } catch { voice = null; }
+}
+if (typeof window !== 'undefined' && window.speechSynthesis) {
+  pickVoice();
+  window.speechSynthesis.addEventListener?.('voiceschanged', pickVoice);
+}
+
+// LAUNCH tıklamasında çağrılır: ses listesini hazırlar, eski konuşmayı temizler
+export function primeSpeech() {
+  try { window.speechSynthesis?.cancel(); pickVoice(); } catch { /* yok */ }
+}
+
+export function say(text, { interrupt = false, rate = 0.95 } = {}) {
   if (muted || !window.speechSynthesis) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US'; u.rate = 1.05; u.pitch = 0.8; u.volume = volume;
-    window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+    if (voice) u.voice = voice;
+    u.lang = voice?.lang || 'en-US'; u.rate = rate; u.pitch = 0.9; u.volume = Math.max(0.4, volume);
+    if (interrupt) window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
   } catch { /* desteklenmiyor */ }
 }
 export function sayStop() { try { window.speechSynthesis?.cancel(); } catch { /* yok */ } }
@@ -118,6 +141,9 @@ export const SFX = {
   pip:     () => { tone(1180, 0.1, 'sine', 0.12); noise(0.14, 0.04, 5000, 2500); },
   siren:   () => [0, 1, 2, 3, 4, 5].forEach((i) => tone(i % 2 ? 620 : 830, 0.24, 'square', 0.07, null, i * 0.26)),
   ignite:  () => { noise(2.0, 0.95, 1400, 70); tone(95, 1.4, 'sine', 0.7, 30); },
+  deluge:  () => noise(3.2, 0.18, 5200, 1800),                       // rampaya su püskürtme (buhar)
+  sparks:  () => { for (let i = 0; i < 10; i++) noise(0.05, 0.25, 9000, 4000, i * 0.07); },
+  flash:   () => { noise(0.9, 0.5, 6000, 300); tone(140, 0.6, 'sine', 0.3, 60); },
   sep:     () => { noise(0.22, 0.55, 7000, 1200); tone(230, 0.14, 'square', 0.08, 90); },
   boom:    () => { noise(3.4, 1.0, 2600, 40); tone(70, 2.4, 'sine', 0.85, 18); noise(0.5, 0.6, 9000, 900); },
   whoosh:  () => noise(1.8, 0.22, 2600, 220),

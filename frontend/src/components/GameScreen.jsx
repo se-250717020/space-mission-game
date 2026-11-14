@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { postDesign, postLaunch } from '../api.js';
-import { audio, SFX } from '../sound.js';
+import { audio, primeSpeech, SFX } from '../sound.js';
 import { CHECK_WORDS, DELTA_WORDS } from '../words.js';
 import Workshop from './Workshop.jsx';
 import Dashboard from './Dashboard.jsx';
@@ -60,7 +60,7 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
 
   const launch = async () => {
     if (launching) return;
-    audio(); SFX.click();
+    audio(); primeSpeech(); SFX.click();
     setLaunching(true);
     try {
       await queue.current;
