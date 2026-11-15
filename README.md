@@ -78,7 +78,9 @@ anten + yer istasyonu gönderim hızını, bilgisayar hafızayı, bilim puanı p
 Puana göre rütbe (Cadet → Pilot → Commander → NASA Legend) ve Pilotlar skor tablosu.
 
 **Diğer:** Space School sayfası (sözlük, kontrol dersleri, gerçek NASA görevleri), skor tablosu,
-Options (ses, animasyon, tasarım kodu `SMG1-...` ile kaydet / paylaş), karneyi Markdown indir.
+Options (ses, müzik, animasyon). Karnedeki **🔗 Share my design** tasarımın linkini verir; linki açan
+arkadaş o uzay aracını kendi atölyesinde görür. Skor tablosunda **🔁 Try it** o satırdaki tasarımı atölyede açar.
+Ödünç tasarım hiç değiştirilmeden fırlatılırsa skor tablosuna yazılmaz.
 
 ---
 

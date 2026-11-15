@@ -11,8 +11,12 @@ import MiniGame from './MiniGame.jsx';
 import Report from './Report.jsx';
 import Coach from './Coach.jsx';
 
+// Tasarımın sıralı anahtarlı metni: ödünç tasarım hiç değişmedi mi diye bakmak için
+const designKey = (selection) => JSON.stringify(selection, Object.keys(selection).sort());
+
 // Oyun ekranı: 3 kolon (atölye · sahne + LAUNCH · bilgi). Tüm sayılar backend'den (calculations.py) gelir.
-export default function GameScreen({ gameData, player, difficulty, settings, setSettings, onMenu, go }) {
+// `shared` ({ code, from }) verilirse oyun o paylaşılan tasarımla açılır.
+export default function GameScreen({ gameData, player, difficulty, shared, settings, setSettings, onMenu, go }) {
   const [state, setState] = useState(null);          // /api/design cevabı
   const [focus, setFocus] = useState({ category: 'mission' });
   const [toast, setToast] = useState(null);
@@ -26,6 +30,7 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
   const toastTimer = useRef(null);
   const launchingRef = useRef(false);
   const [jump, setJump] = useState(null);             // "Fix it ➜" → atölyede açılacak yer
+  const borrowed = useRef(null);                      // paylaşılan tasarımın ilk hali: aynen fırlatılırsa skor tablosuna yazılmaz
   // İlk oyunda kısa rehber çıkar; sonra üst çubuktaki "?" ile açılır
   const [guide, setGuide] = useState(() => { try { return !localStorage.getItem('smg_seen_guide'); } catch { return false; } });
   const closeGuide = useCallback(() => {
@@ -49,10 +54,21 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
   }, []);
 
   useEffect(() => {
-    postDesign({ mission: Object.keys(gameData.missions)[0], difficulty })
-      .then((s) => { latest.current = s; setState(s); })
-      .catch((e) => setError(e.message));
-  }, [gameData, difficulty]);
+    const fresh = () => postDesign({ mission: Object.keys(gameData.missions)[0], difficulty });
+    const open = shared?.code
+      ? postDesign({ code: shared.code })
+        .then((s) => {
+          borrowed.current = designKey(s.selection);
+          setToast({ id: Date.now(), kind: 'good', icon: '📦', text: shared.from ? `${shared.from}'s design is ready!` : 'A shared design is ready!',
+                     note: 'Change a part to make it yours.', problems: [], fixed: [] });
+          clearTimeout(toastTimer.current);
+          toastTimer.current = setTimeout(() => setToast(null), 5000);
+          return s;
+        })
+        .catch(() => { setError('That design link is broken, so here is a new design.'); return fresh(); })
+      : fresh();
+    open.then((s) => { latest.current = s; setState(s); }).catch((e) => setError(e.message));
+  }, [gameData, difficulty, shared]);
 
   const showImpact = useCallback((impact) => {
     if (!impact || !impact.headline) return;
@@ -95,8 +111,10 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
     setLaunching(true);
     try {
       await queue.current;
-      const result = await postLaunch(latest.current.selection, player);
-      setFlight(result);
+      const selection = latest.current.selection;
+      const unchanged = borrowed.current !== null && designKey(selection) === borrowed.current;
+      const result = await postLaunch(selection, player, !unchanged);
+      setFlight({ ...result, borrowed: unchanged });
       setGameScore(null);
       setPhase('launch');
     } catch (e) {
@@ -160,7 +178,8 @@ export default function GameScreen({ gameData, player, difficulty, settings, set
                       exit={{ opacity: 0, y: 20 }} transition={{ type: 'spring', stiffness: 380, damping: 28 }}
                       className={`pointer-events-none fixed bottom-4 left-1/2 z-40 w-[min(92vw,30rem)] -translate-x-1/2 rounded-2xl border px-4 py-3 shadow-2xl
                         ${toast.kind === 'bad' ? 'border-bad bg-[#2a0c14]/95' : toast.kind === 'good' ? 'border-ok bg-[#0a2620]/95' : 'border-line bg-panel2/95'}`}>
-            <div className="font-bold">🛠️ {toast.text}</div>
+            <div className="font-bold">{toast.icon || '🛠️'} {toast.text}</div>
+            {toast.note && <div className="text-sm text-muted">{toast.note}</div>}
             {toast.problems.length > 0 && <div className="text-sm text-[#ffb3ba]">🚨 Uh-oh: {toast.problems.join(', ')}!</div>}
             {toast.fixed.length > 0 && <div className="text-sm text-ok">🎉 Fixed: {toast.fixed.join(', ')}</div>}
           </motion.div>

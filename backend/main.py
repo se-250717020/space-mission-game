@@ -11,7 +11,7 @@ her sayı calculations.py'den gelir.
 
 Uç noktalar (endpoint):
     GET  /api/game-data     → tüm görev, yörünge, hedef, roket ve parça verileri (+ roket çizimleri)
-    POST /api/design        → tasarımda bir değişiklik yap; göstergeler, uyarılar, puanlar, çizimler
+    POST /api/design        → tasarımda bir değişiklik yap (ya da paylaşılan kodu aç); göstergeler, uyarılar, puanlar, çizimler
     POST /api/launch        → fırlatma simülasyonu + rapor + mini oyun ayarları (+ skor tablosuna kayıt)
     GET  /api/leaderboard   → skor tablosu
     POST /api/flight-score  → uçuş mini oyunu puanını kaydet; sıralama + ilk 5 pilot
@@ -82,6 +82,7 @@ class DesignRequest(BaseModel):
     difficulty: Optional[str] = None             # yeni oyun için
     key: Optional[str] = None                    # değişen alan (ör. "rocket")
     value: Any = None                            # yeni değeri
+    code: Optional[str] = None                   # paylaşılan tasarım kodu ("SMG1-..."): o tasarımı açar
 
 
 class LaunchRequest(BaseModel):
@@ -186,7 +187,14 @@ def game_data():
 
 @app.post("/api/design")
 def design(req: DesignRequest):
-    """Yeni oyun başlatır ya da tasarımda tek bir alanı değiştirir (kurallar AI_CONTEXT.md bölüm 9)."""
+    """Yeni oyun başlatır ya da tasarımda tek bir alanı değiştirir (kurallar AI_CONTEXT.md bölüm 9).
+    `code` verilirse paylaşılan tasarımı açar (paylaşım linki ve skor tablosundaki "Try it")."""
+    if req.code:
+        try:
+            return _design_state(calc.decode_design(req.code))
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
     if req.selection is None:
         mission = req.mission or next(iter(data.MISSIONS))
         difficulty = req.difficulty or data.DEFAULT_DIFFICULTY

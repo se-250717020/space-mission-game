@@ -17,11 +17,12 @@ async function request(path, options) {
 
 export const getGameData = () => request('/api/game-data');
 
-// Yeni oyun: { mission, difficulty }  ·  Değişiklik: { selection, key, value }
+// Yeni oyun: { mission, difficulty }  ·  Değişiklik: { selection, key, value }  ·  Paylaşılan tasarım: { code }
 export const postDesign = (body) => request('/api/design', { method: 'POST', body: JSON.stringify(body) });
 
-export const postLaunch = (selection, playerName) =>
-  request('/api/launch', { method: 'POST', body: JSON.stringify({ selection, player_name: playerName }) });
+// saveScore=false: skor tablosuna yazılmaz (hiç değiştirilmemiş ödünç tasarım)
+export const postLaunch = (selection, playerName, saveScore = true) =>
+  request('/api/launch', { method: 'POST', body: JSON.stringify({ selection, player_name: playerName, save_score: saveScore }) });
 
 export const getLeaderboard = (mission, difficulty) => {
   const q = new URLSearchParams();

@@ -2,14 +2,26 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { CHECK_WORDS } from '../words.js';
 
-// Görev raporu: not, puan, kontroller, analiz, en yakın gerçek NASA görevi
+// Görev raporu: not, puan, kontroller, analiz, en yakın gerçek NASA görevi, tasarımı paylaşma linki
 export default function Report({ flight, gameData, gameScore, onWorkshop, onMenu, onLeaderboard, onFly }) {
   const { evaluation: ev, analysis, real_mission: real, launch } = flight;
   const active = ev.checks.filter((c) => c.active);
-  const [copied, setCopied] = useState(false);
+  const [shareState, setShareState] = useState('');   // '' · 'copied' · link (panoya yazılamadı, elle kopyalansın)
   const ok = launch.success;
-  const copy = () => {
-    navigator.clipboard?.writeText(flight.design_code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {});
+  // Paylaşım linki: açan kişi bu tasarımı kendi atölyesinde görür (App.jsx ?design=)
+  const share = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?design=${encodeURIComponent(flight.design_code)}`;
+    try {
+      if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+        await navigator.share({ title: 'Space Mission Designer', text: 'Can you fly my spacecraft? 🚀', url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setShareState('copied');
+      setTimeout(() => setShareState(''), 2500);
+    } catch (e) {
+      if (e?.name !== 'AbortError') setShareState(url);   // AbortError: paylaşım penceresi kapatıldı
+    }
   };
   const list = { hidden: {}, show: { transition: { staggerChildren: 0.05, delayChildren: 0.3 } } };
   const item = { hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0 } };
@@ -91,9 +103,16 @@ export default function Report({ flight, gameData, gameScore, onWorkshop, onMenu
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-panel2 px-3 py-2 text-sm">
-          <span className="text-muted">Design code:</span>
-          <code className="min-w-0 flex-1 truncate font-mono text-cyan">{flight.design_code}</code>
-          <button onClick={copy} className="rounded-lg bg-white/10 px-3 py-1 font-bold">{copied ? '✅ Copied' : '📋 Copy'}</button>
+          <span className="min-w-0 flex-1 text-muted">
+            {flight.borrowed ? '📦 Borrowed design: change one part to get on the leaderboard.' : 'Send your spacecraft to a friend. They can open it and fly it!'}
+          </span>
+          <button onClick={share} className="rounded-lg bg-cyan/15 px-3 py-1.5 font-bold text-cyan hover:bg-cyan/25">
+            {shareState === 'copied' ? '✅ Link copied!' : flight.borrowed ? '🔗 Share this design' : '🔗 Share my design'}
+          </button>
+          {shareState && shareState !== 'copied' && (
+            <input readOnly value={shareState} onFocus={(e) => e.target.select()} aria-label="Design link"
+                   className="w-full rounded-lg bg-void/70 px-2 py-1 font-mono text-xs text-cyan" />
+          )}
         </div>
 
         <div className="mt-5 grid gap-2 sm:grid-cols-4">

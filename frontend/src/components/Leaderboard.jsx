@@ -4,7 +4,8 @@ import { getFlightLeaderboard, getLeaderboard } from '../api.js';
 import { SFX } from '../sound.js';
 import PageShell from './PageShell.jsx';
 
-// İki tablo: 🛠️ Tasarımcılar (görev puanı) ve 🧑‍🚀 Pilotlar (Science Run uçuş puanı)
+// İki tablo: 🛠️ Tasarımcılar (görev puanı) ve 🧑‍🚀 Pilotlar (Science Run uçuş puanı).
+// Tasarımcı satırındaki "Try it" o tasarımı (kayıttaki `code`) oyuncunun atölyesinde açar.
 const TABS = [['designers', '🛠️ Designers'], ['pilots', '🧑‍🚀 Pilots']];
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -18,7 +19,7 @@ function Row({ i, children }) {
   );
 }
 
-export default function Leaderboard({ gameData, onBack }) {
+export default function Leaderboard({ gameData, onBack, onTry }) {
   const [tab, setTab] = useState('designers');
   const [mission, setMission] = useState('');
   const [difficulty, setDifficulty] = useState('');
@@ -45,7 +46,7 @@ export default function Leaderboard({ gameData, onBack }) {
         ))}
       </div>
       <p className="mb-3 text-sm text-muted">
-        {tab === 'pilots' ? 'Best Science Run flights: who sent the most science home?' : 'Best spacecraft designs: mission score out of 100.'}
+        {tab === 'pilots' ? 'Best Science Run flights: who sent the most science home?' : 'Best spacecraft designs: mission score out of 100. Press 🔁 Try it to open one in your workshop.'}
       </p>
       <div className="mb-4 flex flex-wrap gap-2">
         <select value={mission} onChange={(e) => setMission(e.target.value)} className={select}>
@@ -89,6 +90,10 @@ export default function Leaderboard({ gameData, onBack }) {
                     <span className="block font-display text-xl text-cyan">{r.score}</span>
                     <span className="text-xs">{r.success ? '✅' : '❌'} {r.grade}</span>
                   </span>
+                  {r.code && onTry && (
+                    <button onClick={() => { SFX.click(); onTry(r.code, r.name); }} title="Open this design in your workshop"
+                            className="shrink-0 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-sm font-bold hover:border-cyan">🔁 Try it</button>
+                  )}
                 </Row>
               )))}
             </ol>

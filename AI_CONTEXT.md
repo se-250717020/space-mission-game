@@ -18,7 +18,8 @@ bir mühendislik karnesi, görev sonrası analiz ve en benzer gerçek NASA göre
 - **Zorluk seviyeleri:** Easy, Normal, Hard (sürpriz kısıt + tüm kontroller), Sandbox.
 - Ana menü (isim, zorluk, Leaderboard, Space School, Options) → 3 kolonlu oyun ekranı → LAUNCH →
   fırlatma animasyonu → görev başarılıysa uzay aracını uçurma **mini oyunu** (tasarım oyunda hissedilir).
-- Space School sayfası (sözlük, dersler, gerçek görevler), skor tablosu, tasarım kodu ile kaydet/paylaş.
+- Space School sayfası (sözlük, dersler, gerçek görevler), skor tablosu, tasarımı link ile paylaş
+  (`?design=SMG1-...`) ve skor tablosundan başkasının tasarımını aç (🔁 Try it).
 
 Canlı oyun Render'da (ücretsiz plan): https://space-mission-game.onrender.com — `Dockerfile` React'i
 derler, `backend/main.py` hem oyunu hem `/api`'yi tek adresten verir; `main`'e her push siteyi günceller.
@@ -231,7 +232,10 @@ Takım modu 2026-11-14'te kaldırıldı, oyun sadece tek kişilik. `team_room.py
   sayılar, terimler ve hesap mesajları "📚 Why? (Learn more)" kutularında. Arayüz hesap yapmaz.
 - `src/App.jsx`: sayfalar `menu` → `game` → (`leaderboard`, `school`, `options`); tarayıcıda saklananlar
   (`localStorage`): `smg_name`, `smg_difficulty`, `smg_settings` (`sound`, `volume`, `animate`, `music`).
-  Arka plan `components/SpaceBackdrop.jsx`.
+  Arka plan `components/SpaceBackdrop.jsx`. **Paylaşılan tasarım:** adres `?design=SMG1-...` ise oyun
+  doğrudan o tasarımla açılır (adres çubuğu sonra temizlenir); skor tablosundaki "🔁 Try it" de aynı yolu
+  kullanır (`GameScreen` `shared` = `{code, from}` → `POST /api/design {"code"}`). Ödünç tasarım hiç
+  değiştirilmeden fırlatılırsa `save_score=false` gider (skor tablosuna kopya girmez), karnede bunu söyler.
 - `components/MainMenu.jsx`: isim, zorluk, `START MISSION`, Leaderboard / Space School / Options.
 - `components/GameScreen.jsx`: 3 kolon. Sol `Workshop` (sekmeler 🎯 Mission / 🚀 Rocket / 🛠️ Parts, parça
   grupları), orta `Dashboard` (atölye sahnesi = `artwork.workshop_scene`, kaynak çubukları, sistem şeridi,
@@ -247,8 +251,9 @@ Takım modu 2026-11-14'te kaldırıldı, oyun sadece tek kişilik. `team_room.py
   bonusu (`full_load_bonus`), ⚡ enerji topla, ☄️ asteroitten kaç (can = zırh). Ayarlar
   `calc.minigame_params`'tan gelir, JS sadece oyun fiziği yapar. Bitişte `POST /api/flight-score`
   (rütbe `FLIGHT_RANKS`), en iyi skor `smg_best_flight`.
-- `components/Report.jsx` (karne, analiz, gerçek NASA görevi, tasarım kodu), `Leaderboard.jsx`
-  (🛠️ Designers / 🧑‍🚀 Pilots), `SpaceSchool.jsx`, `Options.jsx`.
+- `components/Report.jsx` (karne, analiz, gerçek NASA görevi, "🔗 Share my design": `design_code` ile
+  paylaşım linki; telefonda paylaşım penceresi, bilgisayarda panoya kopyalar), `Leaderboard.jsx`
+  (🛠️ Designers, satırda 🔁 Try it / 🧑‍🚀 Pilots), `SpaceSchool.jsx`, `Options.jsx`.
 - Ekran kelimeleri `src/words.js` (`CHECK_WORDS`, `MAIN_GAUGE_WORDS`, `RATING_WORDS`, `DELTA_WORDS`,
   `GAME_FEEL_WORDS`, `CATEGORY_KID`, `FIX_TARGETS` …); sesler `src/sound.js` (Web Audio ile üretilir,
   dosya yok: `SFX`, motor sesi, lobi müziği `setMusicMode`); API çağrıları `src/api.js`.
@@ -275,7 +280,7 @@ CORS açık (`allow_origins=["*"]`). Geliştirmede Vite `/api`'yi `127.0.0.1:800
 | Uç nokta | Gövde | Döndürür |
 |---|---|---|
 | `GET /api/game-data` | — | `missions`, `objectives`, `orbits`, `parts` (`rocket`, `power`, `battery`, `computer`, `adcs`, `shield`, `instruments`, `comms`, `ground_station`), `instrument_type_labels`, `comms_range_labels`, `difficulties`, `default_difficulty`, `design_twists`, `space_events`, `check_ids`, `check_names`, `check_lessons`, `glossary`, `real_missions`, `max_power_units`, `selection_keys`, `rocket_art` ({roket id: `artwork.rocket_image`}) |
-| `POST /api/design` | Yeni oyun: `{"mission", "difficulty"}` · Değişiklik: `{"selection", "key", "value"}` (`key` ∈ `SELECTION_KEYS`; `"twist": "random"` rastgele sürpriz) | DESIGN: `selection`, `evaluation`, `gauges`, `warnings`, `requirements`, `options` ({kategori: `part_options`}), `ratings` ({kategori: `part_ratings`}), `game_feel`, `cost`, `impact` (`change_impact` veya null), `art` (`scene`: `workshop_scene` HTML'i, `craft`: `spacecraft_image`) |
+| `POST /api/design` | Yeni oyun: `{"mission", "difficulty"}` · Değişiklik: `{"selection", "key", "value"}` (`key` ∈ `SELECTION_KEYS`; `"twist": "random"` rastgele sürpriz) · Paylaşılan tasarım: `{"code": "SMG1-..."}` (`decode_design`; bozuk kod → 400) | DESIGN: `selection`, `evaluation`, `gauges`, `warnings`, `requirements`, `options` ({kategori: `part_options`}), `ratings` ({kategori: `part_ratings`}), `game_feel`, `cost`, `impact` (`change_impact` veya null), `art` (`scene`: `workshop_scene` HTML'i, `craft`: `spacecraft_image`) |
 | `POST /api/launch` | `{"selection", "player_name", "save_score"=true}` | `launch` (`simulate_launch`), `evaluation`, `analysis`, `real_mission`, `timeline`, `minigame`, `design_code`, `leaderboard_entry` (kaydedildiyse), `art` (`rocket`, `craft`) |
 | `GET /api/leaderboard?mission=&difficulty=&limit=10` | — | `rank_leaderboard` listesi (`backend/leaderboard.json`, GitHub'a gitmez) |
 | `POST /api/flight-score` | `{"selection", "player_name", "score", "packets"}` | `entry` (`flight_score_entry`), `saved` (skor tablosu açık zorlukta ve puan > 0 ise kaydedilir), `rank` (1'den başlar), `total`, `top` (ilk 5 FLIGHT) |

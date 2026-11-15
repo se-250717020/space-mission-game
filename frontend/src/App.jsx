@@ -23,9 +23,18 @@ function useStored(key, initial) {
 }
 
 export default function App() {
+  // Paylaşılan tasarım: linkteki ?design=SMG1-... (oyun doğrudan o tasarımla açılır)
+  // ya da skor tablosundaki "Try it". { code, from } veya null.
+  const [shared, setShared] = useState(() => {
+    try { const code = new URLSearchParams(window.location.search).get('design'); return code ? { code, from: '' } : null; } catch { return null; }
+  });
   const [gameData, setGameData] = useState(null);
   const [error, setError] = useState('');
-  const [page, setPage] = useState('menu');
+  const [page, setPage] = useState(() => (shared ? 'game' : 'menu'));
+  // Link bir kez açılır: adres çubuğu temizlenir, sayfa yenilenince normal menü gelir
+  useEffect(() => {
+    try { if (window.location.search.includes('design=')) window.history.replaceState(null, '', window.location.pathname); } catch { /* eski tarayıcı */ }
+  }, []);
   const [player, setPlayer] = useStored('smg_name', '');
   const [difficulty, setDifficulty] = useStored('smg_difficulty', 'normal');
   const [settings, setSettings] = useStored('smg_settings', DEFAULT_SETTINGS);
@@ -74,17 +83,18 @@ export default function App() {
     );
   }
 
-  const startGame = () => { setGameId((n) => n + 1); setPage('game'); };
+  const startGame = () => { setShared(null); setGameId((n) => n + 1); setPage('game'); };
+  const tryDesign = (code, from) => { setShared({ code, from }); setGameId((n) => n + 1); setPage('game'); };
   const pages = {
     menu: (
       <MainMenu gameData={gameData} player={player} setPlayer={setPlayer} difficulty={difficulty}
                 setDifficulty={setDifficulty} onStart={startGame} go={setPage} />
     ),
     game: (
-      <GameScreen key={gameId} gameData={gameData} player={player || 'Astronaut'} difficulty={difficulty}
+      <GameScreen key={gameId} gameData={gameData} player={player || 'Astronaut'} difficulty={difficulty} shared={shared}
                   settings={settings} setSettings={setSettings} onMenu={() => setPage('menu')} go={setPage} />
     ),
-    leaderboard: <Leaderboard gameData={gameData} onBack={() => setPage('menu')} />,
+    leaderboard: <Leaderboard gameData={gameData} onBack={() => setPage('menu')} onTry={tryDesign} />,
     school: <SpaceSchool gameData={gameData} onBack={() => setPage('menu')} />,
     options: <Options settings={settings} setSettings={setSettings} onBack={() => setPage('menu')} />,
   };
