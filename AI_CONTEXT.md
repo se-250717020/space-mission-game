@@ -23,7 +23,7 @@ bir mühendislik karnesi, görev sonrası analiz ve en benzer gerçek NASA göre
 
 Canlı oyun Render'da (ücretsiz plan): https://space-mission-game.onrender.com — `Dockerfile` React'i
 derler, `backend/main.py` hem oyunu hem `/api`'yi tek adresten verir; `main`'e her push siteyi günceller.
-(Eski Streamlit sürümü 2026-11-15'te kaldırıldı.)
+Jüri sunumu (`pitch-deck/`, Reveal.js) yayında: https://space-missiongame.netlify.app/
 Proje artık Tech Lead'in bilgisayarında, ekip birlikte (Claude Code ile) geliştiriyor.
 
 ## 2. Dosyalar

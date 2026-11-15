@@ -1,3 +1,4 @@
+# Docker imajına girmeyenler (Render sadece oyunu ve API'yi kurar)
 .git
 .venv
 .claude
@@ -5,3 +6,7 @@
 frontend/node_modules
 frontend/dist
 backend/*.json
+
+# Oyunun parçası olmayan klasörler: jüri sunumu (Netlify'da) ve demo videosu
+pitch-deck
+demo-video

@@ -3,7 +3,8 @@ calculations.py  —  Oyun kuralları (Tech Lead bilgisayarında birlikte geliş
 ================================================================
 Oyunun "beyni". Seçilen parçalara bakıp maliyet, takvim, kütle, güç,
 batarya, radyasyon, iletişim, veri, yönelim, kapsama, görev ömrü ve
-bilim kontrollerini yapar; görev sonucunu, puanı, takım raporunu ve
+bilim kontrollerini yapar; görev sonucunu, puanı, görev sonrası analizi,
+en yakın gerçek NASA görevini, mini oyun ayarlarını, paylaşım kodunu ve
 fırlatma simülasyonunu döndürür. Sözleşmenin tamamı: AI_CONTEXT.md
 
 KURALLAR:

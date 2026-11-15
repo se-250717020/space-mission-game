@@ -14,6 +14,7 @@ bile anlayacağı kadar sade: sayılar yerine renkli çubuklar ve emoji puanlar;
 - **GitHub:** https://github.com/se-250717020/space-mission-game
 - **Canlı oyun (React + FastAPI, Render):** https://space-mission-game.onrender.com
   (ücretsiz plan: bir süre kimse girmezse ilk açılış ~1 dakika sürer)
+- **Sunum (pitch deck):** https://space-missiongame.netlify.app/
 - **Ekip kuralları ve çalışma şekli:** **[TEAM_RULES.md](TEAM_RULES.md)**
 - **Sözleşme (tüm isimler, fonksiyonlar):** **[AI_CONTEXT.md](AI_CONTEXT.md)**
 
@@ -27,6 +28,7 @@ bile anlayacağı kadar sade: sayılar yerine renkli çubuklar ve emoji puanlar;
 | `backend/main.py`, `backend/requirements.txt` | FastAPI sunucusu: `data.py` + `calculations.py` + `artwork.py`'yi HTTP ile sunar (hesap yapmaz); yayında oyunun kendisini de verir |
 | `frontend/` | React + Vite + Tailwind + Framer Motion arayüzü: ana menü, 3 kolonlu oyun ekranı, fırlatma animasyonu (sesli geri sayım, ateşleme, kademe ayrılması, gezegenler arası yol), Science Run mini oyunu, rapor, skor tabloları |
 | `Dockerfile`, `.dockerignore`, `render.yaml` | İnternete yayınlama (Render, ücretsiz): React'i derler, FastAPI ile tek adresten sunar (bölüm 5) |
+| `pitch-deck/` | Jüri sunumu (Reveal.js, 6 slayt, oyundan ekran görüntüleri): https://space-missiongame.netlify.app/ |
 | `AI_CONTEXT.md`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md` | Dokümanlar |
 
 Bağlantı zinciri: `data.py` → `calculations.py` → `backend/main.py` → `frontend/` (`artwork.py` çizimler için
@@ -206,5 +208,5 @@ Yerelde aynısını denemek: `cd frontend; npm run build`, sonra repo kökünden
 
 - [x] GitHub reposu açıldı ve iskelet ilk kez push edildi.
 - [x] 3 arkadaş **Settings → Collaborators** ile eklendi.
-- [x] Streamlit Cloud'a deploy edildi ve link README'ye yazıldı (eski sürüm, artık kullanılmıyor).
 - [x] React + FastAPI sürümü Render'a deploy edildi (15 Kasım 2026): https://space-mission-game.onrender.com
+- [x] Sunum (pitch deck) yayında: https://space-missiongame.netlify.app/

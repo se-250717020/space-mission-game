@@ -4,7 +4,7 @@ Notes for Claude Code sessions run by the Tech Lead. Since 2026-11-14 the whole 
 
 ## ⚠️ React + FastAPI only (read first)
 - **The game is ONLY `frontend/` (React + Vite + Tailwind + Framer Motion) + `backend/main.py` (FastAPI).** Every feature, fix, polish and check happens there.
-- The old Streamlit version (`app.py`, `assets/flight.html`, `.streamlit/`, root `requirements.txt`) was deleted from the repo on 2026-11-15. Do not bring it back, run `streamlit` or talk about the streamlit.app site.
+- Older versions of the game were removed from the repo on 2026-11-15. Do not add a second UI or bring deleted files back.
 - The shared game logic (`data.py`, `calculations.py`, `artwork.py`) is imported by the backend, so changes there still follow the contract rules below.
 - Run and check with the `backend` (port 8000) + `frontend` (port 5173) preview servers: http://localhost:5173.
 
@@ -23,6 +23,7 @@ Notes for Claude Code sessions run by the Tech Lead. Since 2026-11-14 the whole 
 | `backend/main.py`, `backend/requirements.txt` | FastAPI server (no math): `GET /api/game-data`, `POST /api/design`, `POST /api/launch`, `GET /api/leaderboard`, `POST /api/flight-score`, `GET /api/flight-leaderboard`; imports the root `data.py` / `calculations.py` / `artwork.py` (AI_CONTEXT.md section 9); serves `frontend/dist` at `/` when it exists |
 | `frontend/` | React UI (AI_CONTEXT.md section 7). On-screen word tables in `src/words.js`, sounds and music in `src/sound.js` (Web Audio, no files), API calls in `src/api.js` |
 | `Dockerfile`, `.dockerignore`, `render.yaml` | Render deploy (free web service, Frankfurt) |
+| `pitch-deck/` | Jury pitch deck (Reveal.js, 6 slides, game screenshots in `screenshots/`); live at https://space-missiongame.netlify.app/ (not part of the game or the Docker image) |
 | `AI_CONTEXT.md`, `.gitignore`, `README.md`, `TEAM_RULES.md`, `CLAUDE.md` | Contract and docs |
 
 Data flow: `data.py` → `calculations.py` → `backend/main.py` → `frontend/` (`artwork.py` reads `data.py` for drawings). The shared contract is `AI_CONTEXT.md`: every data key, the 15-key `selection` dict (`data.SELECTION_KEYS`; `calculations.normalize_selection` fills missing keys so old 8-key selections still work), public functions and their result dicts, and the API. `data.CHECK_IDS` fixes the 12 check ids in order; each difficulty's `active_checks` decides which are scored.

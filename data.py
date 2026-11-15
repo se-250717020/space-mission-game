@@ -5,7 +5,8 @@ Oyundaki TÜM sabit veriler burada durur: görevler, bilimsel hedefler,
 yörüngeler, roketler, enerji sistemleri, bataryalar, uçuş bilgisayarları,
 yönelim kontrolü, radyasyon kalkanları, bilimsel cihazlar, antenler,
 yer istasyonları, uzay olayları, tasarım sürprizleri, zorluk seviyeleri,
-eğitici dersler, sözlük, takım rolleri ve gerçek NASA görevleri.
+eğitici dersler, sözlük, gerçek NASA görevleri ve takım rolleri (takım rolleri
+arayüzde artık kullanılmıyor, sözleşme gereği duruyor).
 Tüm anahtarların listesi ve anlamı: AI_CONTEXT.md
 
 Bu dosyada SADECE veri vardır. Hesaplama yok, arayüz kodu yok.

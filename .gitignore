@@ -20,3 +20,6 @@ flight_scores.json
 # React arayüzü (npm install ile kurulur, derleme çıktısı)
 node_modules/
 frontend/dist/
+
+# Demo videosu çalışma klasörü (büyük video ve ses dosyaları, GitHub'a gitmez)
+demo-video/

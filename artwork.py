@@ -7,7 +7,8 @@ artwork.py  —  Roket ve uzay aracı çizimleri (SVG metni üretir)
 * Uzay aracı seçilen parçalara göre çizilir: güneş paneli sayısı/boyu, RTG, anten çanağı, kalkan
   rengi ve kalınlığı, bilim cihazları, batarya, bilgisayar ışığı, yönelim sistemi.
 * backend/main.py kullanır:   workshop_scene(design, mass_level, highlight, flip)   (atölye sahnesi, HTML)
-  fırlatma ve mini oyun için:   rocket_image(rocket_id), spacecraft_image(design)   (tek başına SVG)
+  fırlatma ve Science Run mini oyunu için:   rocket_image(rocket_id), spacecraft_image(design)   (tek başına SVG;
+  her roketin çizimi /api/game-data içinde `rocket_art` olarak da gider)
 * `highlight`: en son değişen parça grubu ("rocket", "power", "battery", "computer", "adcs",
   "shield", "comms", "instruments", "target"); o grup kısa bir "pop" animasyonu yapar
   (CSS: frontend/src/index.css, ".scene-svg").

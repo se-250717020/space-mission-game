@@ -73,6 +73,7 @@ NASA görsellerinin çoğu serbestçe kullanılabilir (images.nasa.gov); kaynakl
 
 - [x] Çalışan oyun linki: https://space-mission-game.onrender.com
 - [x] GitHub reposu (public): https://github.com/se-250717020/space-mission-game
+- [x] Jüri sunumu (pitch deck): https://space-missiongame.netlify.app/
 - [ ] 2 dakikalık demo videosu: problem → oyun nasıl oynanır → hangi NASA görevlerinden ilham alındı
 - [ ] Proje açıklaması (İngilizce): hangi mühendislik kararlarını öğretiyor (bütçe, takvim, kütle,
       güç, batarya, radyasyon, iletişim, veri, yönelim, kapsama, görev ömrü, yörünge ve ödünleşim)
